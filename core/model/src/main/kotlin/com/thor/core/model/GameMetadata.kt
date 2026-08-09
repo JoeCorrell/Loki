@@ -119,13 +119,19 @@ data class ArtworkSet(
     /**
      * Best available image for the top-screen background.
      *
-     * Key art or nothing — a screenshot is never used here. A 4:3 capture from a 1990s console
-     * stretched across a widescreen panel behind a title and a paragraph of text reads as a
-     * fault rather than a choice, and it was the most visible thing on the information screen.
-     * The cover stands in where there is no key art, because it is at least artwork somebody
-     * drew for this game; screenshots remain available to the strip that is meant to show them.
+     * Key art or nothing. The cover used to stand in for it, on the argument that a
+     * cover is at least artwork somebody drew for this game — but a cover is a tall
+     * rectangle and this is a wide one, so standing in meant cropping the middle out
+     * of it and blowing it up. What that looks like on the panel is the game's own
+     * icon stretched across the background, which is the same complaint the
+     * screenshot fallback was removed for.
+     *
+     * Falling through to null is better. The caller's next choice is the platform's
+     * hero — an image made to be a wide backdrop — and a game with no key art then
+     * looks like a game for that system rather than like a mistake. The cover is
+     * still drawn where a cover belongs: on the cell, and beside the title.
      */
-    val backgroundImage: String? get() = hero ?: boxArt
+    val backgroundImage: String? get() = hero
 
     val isEmpty: Boolean
         get() = boxArt == null && hero == null && logo == null &&

@@ -60,11 +60,18 @@ class ArtworkSetTest {
     }
 
     @Test
-    fun `background image never falls back to a screenshot`() {
-        // A 4:3 capture stretched behind a title is the fault this guards against; the cover
-        // is at least artwork drawn for the game.
+    fun `background image is key art or nothing`() {
+        /*
+         * Neither a screenshot nor a cover.
+         *
+         * A 4:3 capture stretched behind a title is one fault; a portrait cover
+         * cropped to a widescreen panel is the same fault wearing better artwork —
+         * on screen it reads as the game's own icon blown up behind the text.
+         * Falling through to null lets the caller reach the platform's hero, which
+         * is an image made to be a backdrop.
+         */
         val noKeyArt = ArtworkSet(boxArt = "box", screenshots = listOf("shot"))
-        assertThat(noKeyArt.backgroundImage).isEqualTo("box")
+        assertThat(noKeyArt.backgroundImage).isNull()
 
         val onlyShots = ArtworkSet(screenshots = listOf("shot"))
         assertThat(onlyShots.backgroundImage).isNull()
