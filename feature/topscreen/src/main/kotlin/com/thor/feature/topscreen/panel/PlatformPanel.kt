@@ -47,6 +47,7 @@ import com.thor.core.model.PlatformHighlight
 import com.thor.core.model.PlatformProfile
 import com.thor.core.model.PlatformProfiles
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.icon.PlatformIcons
 import com.thor.feature.topscreen.component.PlatformLineIcon
 
 /**
@@ -288,16 +289,40 @@ private fun PlatformMasthead(
                 .border(2.dp, outlineBrush, ThorTheme.shapes.small),
             contentAlignment = Alignment.Center,
         ) {
-            if (icon != null) {
-                ArtworkImage(
+            /*
+             * The system's own logo before anything drawn for it.
+             *
+             * Three answers, in order of how much they are actually *that console*.
+             * An installed pack's icon is first because the user chose it. The set
+             * Loki ships is second — real console art, one per system — and it was
+             * missing here entirely, so a library with no pack fell straight past a
+             * cabinet full of logos to an abstract line glyph. The glyph is last and
+             * is a placeholder: it says "a handheld" or "a disc console", not which
+             * one, which is the wrong thing to put beside the system's name.
+             */
+            val bundled = PlatformIcons.preferredOverEnabled(platform.artwork, platform.id)
+
+            when {
+                icon != null -> ArtworkImage(
                     model = icon,
                     contentDescription = platform.name,
                     fallbackText = platform.shortName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-            } else {
-                PlatformLineIcon(
+
+                bundled != null -> ArtworkImage(
+                    model = bundled,
+                    contentDescription = platform.name,
+                    // Fit, not Crop: these are logos with their own margins, and
+                    // cropping one to a square eats the edges of the artwork.
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(BUNDLED_ICON_PADDING.dp),
+                )
+
+                else -> PlatformLineIcon(
                     glyph = profile.systemGlyph,
                     tint = accent,
                     modifier = Modifier
@@ -755,6 +780,9 @@ private const val PROFILE_SECTION_GAP = 10
 private const val PLATFORM_HEADER_GAP = 16
 private const val PLATFORM_ICON_SIZE = 80
 private const val PLATFORM_ICON_PADDING = 17
+
+/** Logos carry their own margins; a little breathing room, not a lot. */
+private const val BUNDLED_ICON_PADDING = 8
 private const val PLATFORM_DESCRIPTION_LINES = 4
 
 /**
