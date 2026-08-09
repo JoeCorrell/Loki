@@ -263,13 +263,22 @@ class ScreenScraperProvider @Inject constructor(
              */
             boxArt = pick("box-2D", "box-3D"),
             /*
-             * Key art only. `ss` used to sit on the end of this list and is a gameplay
-             * capture — so on the majority of games, which have no fanart, the background
-             * behind the title was a 4:3 frame stretched across a widescreen panel. That reads
-             * as a fault rather than a choice, and it is the single most visible thing on the
-             * information screen. An empty slot is better: something else fills it.
+             * Fanart, and only fanart.
+             *
+             * `ss` sat on the end of this list once and is a gameplay capture, so on the
+             * majority of games — which have no fanart — the background behind the title was a
+             * 4:3 frame stretched across a widescreen panel. `screenmarquee` replaced it and
+             * is the same mistake in a different shape: a marquee is a small badge, roughly
+             * square, and the very next line uses it as the *logo*. Stretched across the whole
+             * panel it reads as the game's icon blown up behind the text, which is exactly
+             * what it is.
+             *
+             * An empty slot is better, and it is what every other provider here already does:
+             * the panel falls through to the platform's own hero, an image made to be a wide
+             * backdrop. This is the single most visible thing on the information screen and it
+             * should be key art or nothing.
              */
-            hero = pick("fanart", "screenmarquee"),
+            hero = pick("fanart"),
             logo = pick("wheel", "wheel-hd", "screenmarquee"),
             // ScreenScraper has no square icon type; `wheel-carbon-steel` and
             // the support (cartridge) scans are the closest to 1:1, and a

@@ -458,7 +458,28 @@ class MetadataAggregator @Inject constructor(
              * A hand-picked image is still untouchable: `FIELD_ARTWORK in locked` returns above
              * before any of this runs.
              */
-            hero = forArtwork.firstNotNullOfOrNull { it.artwork.hero } ?: existing.hero,
+            /*
+             * On a full re-scrape the fetched answer wins even when it is *nothing*.
+             *
+             * `?: existing.hero` was the hole in the repair this comment describes. A slot
+             * holding the wrong kind of image could be overwritten by a better one, but never
+             * emptied — so a library carrying marquees and gameplay frames from an older rule
+             * kept them for as long as no provider happened to return a hero, which for a game
+             * with no fanart is forever. The panel went on showing a badge stretched behind the
+             * title and no amount of re-scraping moved it.
+             *
+             * Clearing it is the repair. An empty hero is not a loss: the panel falls through
+             * to the platform's own, which is an image made to be a backdrop.
+             *
+             * A top-up still keeps what is stored — it is not asking to be corrected — and a
+             * hand-picked image never reaches here at all; `FIELD_ARTWORK in locked` returns
+             * above.
+             */
+            hero = if (replaceArtwork) {
+                forArtwork.firstNotNullOfOrNull { it.artwork.hero }
+            } else {
+                existing.hero ?: forArtwork.firstNotNullOfOrNull { it.artwork.hero }
+            },
             logo = slot(existing.logo, ranked.firstNotNullOfOrNull { it.artwork.logo }),
             icon = forIcon.firstNotNullOfOrNull { it.artwork.icon } ?: existing.icon,
             /*
