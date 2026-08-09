@@ -1,0 +1,20 @@
+.claude
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+.cxx/
+captures/
+
+# Icon packs dropped in the working tree for testing the importer.
+# Third-party artwork, tens of megabytes each, and none of it ours to
+# redistribute — THOR ships no packs and imports them at runtime instead.
+/float-ui-*/
+/*-smart-folders-*/
+/iconpacks/
+
+# HotSpot compiler replay dumps, written on a JVM crash.
+replay_pid*.log
+hs_err_pid*.log

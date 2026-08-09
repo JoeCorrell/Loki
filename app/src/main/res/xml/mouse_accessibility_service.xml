@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  THOR's pointer service.
+
+  It observes nothing. `accessibilityEventTypes` is empty and the feedback type is
+  generic because this service is not reading the screen — it exists solely to
+  receive controller buttons while another app has focus, draw a cursor over that
+  app, and dispatch the taps the cursor makes. Requesting event types it does not
+  use would mean being woken for every window change on the device.
+
+  `canRequestFilterKeyEvents` plus `flagRequestFilterKeyEvents` is what allows
+  `onKeyEvent` to see buttons at all, and to consume them so a click does not also
+  reach the game underneath.
+
+  `canPerformGestures` is what allows `dispatchGesture`, which is the only way an
+  unprivileged app can click inside another one.
+
+  `canRetrieveWindowContent` is what allows the on-screen keyboard to type into
+  another app, and it is the one capability here that is genuinely invasive: it
+  is permission to read the contents of every window, not only the field being
+  filled in. Android has a narrower slot for this — an input method — and that
+  would have been the better trade. This is the route taken instead, so the
+  description shown at the moment of granting says plainly what it allows.
+
+  Used for exactly two calls: `findFocus(FOCUS_INPUT)` to locate the field the
+  user has tapped, and `ACTION_SET_TEXT` to fill it in. Nothing is stored, and
+  no window is inspected unless a key has just been pressed on Loki's keyboard.
+
+  `canTakeScreenshot` is what allows a screenshot of a game, which is another
+  app on another display and therefore something the launcher cannot capture on
+  its own. The alternative is `MediaProjection`, which asks the system's consent
+  dialog every time — on top of the very thing being photographed. Used only when
+  the user presses the screenshot action; nothing is captured on a timer, on an
+  event, or in the background, and every frame is written into the active
+  profile's own directory and nowhere else.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:canRequestFilterKeyEvents="true"
+    android:description="@string/mouse_service_description"
+    android:notificationTimeout="0"
+    android:summary="@string/mouse_service_summary" />

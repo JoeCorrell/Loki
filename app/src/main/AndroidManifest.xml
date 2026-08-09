@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      QUERY_ALL_PACKAGES is required for a launcher: LauncherApps must be able to
+      enumerate every launchable activity on the device, which package
+      visibility filtering would otherwise hide from us on API 30+.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Finding a streaming PC on the local network.
+
+      mDNS is multicast, and Android drops multicast packets to the app layer
+      unless this is held — so without it `NsdManager` starts, reports no error,
+      and simply never finds anything. Neither is a runtime permission; both are
+      granted at install.
+
+      WIFI_STATE is what lets the multicast lock be taken at all.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!--
+      Brightness, from the panel Loki draws over a running game.
+
+      A special permission: declaring it is not granting it, and the user has to
+      turn it on in Android's "Modify system settings" screen. Written to the
+      system setting rather than to a window attribute because a window attribute
+      dims only that window, and the window in question is a transparent overlay
+      that has just been taken down — the setting is the brightness the user means.
+      Without the grant the two brightness tiles do nothing and say so in the log.
+    -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+      Recording, which outlives the launcher being on screen.
+
+      A foreground service is the only way Android lets an app keep working while
+      the user is in another app, and `mediaProjection` is the type the platform
+      requires before it will grant a screen capture at all from Android 14.
+
+      `POST_NOTIFICATIONS` is asked for because the service's notification *is* the
+      recording's controls: leave the launcher for a game and it is the only way to
+      stop what you started. Refusing it does not stop recording working from the
+      launcher itself — nothing else in Loki posts a notification, and none of this
+      reads them, which is a separate permission Loki does not hold.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!--
+      Sound on a recording, and only when the user has chosen it.
+
+      Asked for at the moment a recording with sound is started rather than on
+      first run, because the overwhelming majority of recordings are silent and a
+      microphone prompt during setup is a launcher asking to listen for no reason
+      it can name yet. Denied simply means the recording has no sound; nothing
+      else in Loki uses this.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Fallback for the pointer's cursor on a secondary display.
+
+      The cursor is normally an accessibility overlay, which the pointer service
+      already has the right to place and which needs nothing further. Whether one
+      may be placed on a *second* display varies by ROM, so this is the fallback
+      for that case only. It is never requested at runtime and the pointer works
+      without it on the main panel; granting it is entirely the user's move.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Reading ROM directories granted through the storage access framework. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!--
+      Explicit visibility declarations so intent resolution keeps working even
+      if QUERY_ALL_PACKAGES is ever restricted for this install.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
+    <!--
+      `usesCleartextTraffic`, because the servers THOR exists to reach are on the
+      user's own LAN and offer nothing else.
+
+      Blocked by default since API 28, and rightly so for the open internet — but
+      Sunshine answers `/serverinfo` on port 47989 over plain HTTP before any
+      pairing exists, and Jackett and Prowlarr serve Torznab over HTTP by
+      default. Without this, discovery finds a PC and every request to it fails,
+      and a local indexer reports itself unreachable while working perfectly from
+      a browser on the same network.
+
+      Nothing remote is downgraded by it. The catalogue, Real-Debrid, the addons
+      and the artwork scrapers are all addressed by `https://` URLs; this permits
+      cleartext where it is asked for rather than preferring it anywhere.
+    -->
+    <application
+        android:name=".ThorApplication"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Thor">
+
+        <activity
+            android:name=".LauncherActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Thor">
+
+            <!--
+              HOME + DEFAULT registers THOR as a launcher.
+              MONKEY keeps it selectable in the "make default" chooser.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          THOR's home activity for the second panel.
+
+          Android delivers CATEGORY_HOME per display: a Home press while the second
+          panel is focused starts that display's SECONDARY_HOME activity. Declaring
+          only a primary home meant the system started its *own* default launcher
+          there — the stock home screen appearing on the panel THOR had handed to an
+          app, with no way to tell THOR that Home had been pressed at all.
+
+          Declared separately rather than as another filter on LauncherActivity: that
+          activity is singleTask, so claiming the role there would have the system
+          move the launcher's one instance onto the second display.
+        -->
+        <!--
+          `singleTop`, not `singleTask`, and the difference matters here.
+
+          `singleTask` means "be the root of the task with my affinity". This activity
+          has no explicit affinity, so it inherits the package's — the same one
+          LauncherActivity roots, on the *default* display. Two singleTask activities
+          competing for one affinity is not a configuration the system can satisfy on
+          two displays at once, and a secondary-display home that cannot be placed in
+          that display's home task is one the system gives up on, falling back to the
+          platform's own: the stock home screen appearing on the panel THOR should own.
+
+          `singleTop` sidesteps the question entirely. It does no affinity-based task
+          reuse, so the system is free to place this in whichever display's home task
+          it is starting — and because a home activity sits at the top of that task, a
+          repeated Home press still arrives at onNewIntent rather than creating
+          anything. This is the configuration AOSP's own SecondaryDisplayLauncher uses.
+        -->
+        <!--
+          `excludeFromRecents` keeps *this* out of Recents, and nothing else.
+
+          It is right for what it covers: a home activity that draws nothing has
+          no business in the task switcher. It was wrong for what it used to
+          cover as well — apps launched onto this panel joined this activity's
+          task and inherited the exclusion, so they could never be closed. They
+          are given their own task now; see `SecondaryHomeHost.start`.
+        -->
+        <!--
+          A task affinity of its own, which is the other half of the same problem.
+
+          `singleTop` stopped this activity from *claiming* the launcher's task.
+          It did not stop the launcher claiming this one: with no affinity declared
+          both inherit the package's, so once this activity has established the
+          second display's home task under that affinity, `LauncherActivity` —
+          which is `singleTask`, meaning "be the root of the task with my
+          affinity" — resolves into it and is placed on top.
+
+          That is observable on a device as a home task on the second display
+          holding two activities, this one at the root and the launcher above it,
+          and it is why a Home press on the second panel came back showing the
+          *top* screen's interface on the bottom one. It also sticks: nothing in
+          the ordinary run of things pops that activity off again.
+
+          A separate affinity makes the two tasks unrelated, so neither launch
+          mode can reach across into the other's display.
+        -->
+        <activity
+            android:name=".SecondaryHomeActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="${applicationId}.secondaryhome"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:theme="@style/Theme.Thor">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.SECONDARY_HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Recording's own service, and the dialog that has to precede a screen one.
+
+          The service is not exported: everything that starts it is inside Loki —
+          the shortcut panel, and its own notification's actions.
+
+          `ProjectionConsentActivity` is transparent and excluded from recents
+          because it is not a place the user goes. It exists because a projection
+          can only be granted to an activity result, so a notification action has
+          to route through one to ask.
+        -->
+        <service
+            android:name=".capture.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!--
+          Mirrors the system shade into the launcher's own notification panel.
+
+          Exported and permission-guarded because the system, not the launcher,
+          binds it — `BIND_NOTIFICATION_LISTENER_SERVICE` is what stops anything
+          else from doing so. It is inert until the user grants notification
+          access in Android's settings, which no app can grant itself.
+        -->
+        <service
+            android:name=".notification.LokiNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".capture.ProjectionConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!--
+          The window a stream is drawn in.
+
+          Not exported: it is only ever started by THOR, and it attaches to a
+          session already agreed with the host. Started from anywhere else it
+          would find nothing prepared and close again.
+
+          `singleTask` because there is one stream at a time by definition — the
+          host serves one session — so a second instance could only ever be a
+          window with no session behind it.
+
+          The `configChanges` list is what keeps the stream alive through a
+          rotation or a resize. Without it the activity is destroyed and
+          recreated, which takes the surface with it, which tears down the
+          decoder mid-frame — a rotation would end the game.
+
+          `landscape` because the panel is landscape and a game encoded for it
+          has nothing sensible to show in portrait.
+        -->
+        <activity
+            android:name=".stream.StreamSessionActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true"
+            android:resizeableActivity="false"
+            android:preferMinimalPostProcessing="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:theme="@style/Theme.Thor" />
+
+        <!--
+          The controller pointer.
+
+          An accessibility service because that is the only route an unprivileged
+          app has to a cursor that works outside itself: putting a window over
+          another app and clicking inside it needs `dispatchGesture`, and reading
+          controller buttons while that app has focus needs `onKeyEvent`. Both are
+          accessibility APIs. `INJECT_EVENTS` — the direct route — is signature
+          only and not available to any installable app.
+
+          `exported` is false: nothing else may bind to it. The system binds it
+          through the permission below, which only the system holds.
+        -->
+        <service
+            android:name=".mouse.ThorMouseService"
+            android:exported="false"
+            android:label="@string/mouse_service_summary"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mouse_accessibility_service" />
+        </service>
+
+        <!--
+          The metadata scraper and library scanner run as WorkManager jobs; the
+          default initializer is left in place and Hilt supplies the factory
+          through ThorApplication.
+        -->
+    </application>
+
+</manifest>

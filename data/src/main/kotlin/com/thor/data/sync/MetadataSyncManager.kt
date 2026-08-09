@@ -1,0 +1,740 @@
+package com.thor.data.sync
+
+import com.thor.core.common.coroutines.launchSafely
+import com.thor.core.common.dispatchers.ApplicationScope
+import com.thor.core.common.dispatchers.Dispatcher
+import com.thor.core.common.dispatchers.ThorDispatcher
+import com.thor.core.common.log.ThorLog
+import com.thor.core.database.dao.FolderDao
+import com.thor.core.database.dao.GameDao
+import com.thor.core.database.dao.PlatformDao
+import com.thor.core.database.model.GameEntity
+import com.thor.core.datastore.SettingsRepository
+import com.thor.data.scanner.RomHasher
+import com.thor.core.model.GameMetadata
+import com.thor.core.model.MetadataSettings
+import com.thor.core.model.PlatformFlagships
+import com.thor.core.model.PlatformFolders
+import com.thor.data.metadata.ArtworkStore
+import com.thor.data.metadata.MetadataAggregator
+import com.thor.data.metadata.MetadataCandidate
+import com.thor.data.metadata.MetadataQuery
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** One cover on offer, and who supplied it. */
+data class ArtworkOption(val url: String, val providerId: String)
+
+/**
+ * A game a scrape has paused on, and what it is asking.
+ *
+ * Two questions rather than one, asked in order: which game this file is, and
+ * then which of the covers to keep. They are separate because the answers come
+ * from different places — the first decides what the game *is*, and every
+ * provider that recognised it then offers its own art for it, so the best match
+ * and the best cover are routinely from different sources.
+ *
+ * [artwork] empty means the first question is the one on screen.
+ */
+data class PendingMatch(
+    val entryId: String,
+    val title: String,
+    val candidates: List<MetadataCandidate>,
+    val artwork: List<ArtworkOption> = emptyList(),
+)
+
+/** Progress of a metadata scrape. */
+sealed interface ScrapeState {
+    data object Idle : ScrapeState
+    data class Running(
+        val done: Int,
+        val total: Int,
+        val currentTitle: String,
+        /** Non-null when the user requested one platform rather than the library. */
+        val platformId: String? = null,
+    ) : ScrapeState
+    data class Completed(val updated: Int, val skipped: Int) : ScrapeState
+    data class Failed(val message: String) : ScrapeState
+
+    /** No provider is enabled and configured, so a scrape would do nothing. */
+    data object NotConfigured : ScrapeState
+}
+
+/**
+ * Downloads metadata and artwork for the library.
+ *
+ * Separate from [LibrarySyncManager] because the two have different costs and
+ * different failure modes: a file scan is local and fast, while a scrape is
+ * hundreds of rate-limited network calls that the user may want to start,
+ * watch and cancel independently of finding their games.
+ */
+@Singleton
+class MetadataSyncManager @Inject constructor(
+    private val aggregator: MetadataAggregator,
+    private val artworkStore: ArtworkStore,
+    private val gameDao: GameDao,
+    private val folderDao: FolderDao,
+    private val platformDao: PlatformDao,
+    private val romHasher: RomHasher,
+    private val settings: SettingsRepository,
+    @ApplicationScope private val scope: CoroutineScope,
+    @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
+) {
+
+    private val _state = MutableStateFlow<ScrapeState>(ScrapeState.Idle)
+    val state: StateFlow<ScrapeState> = _state.asStateFlow()
+
+    /**
+     * The game the scrape is currently asking about, or null.
+     *
+     * Null is the normal state: the prompt is only raised where more than one
+     * provider answered with something different, which on most files is not the
+     * case.
+     */
+    private val _pendingMatch = MutableStateFlow<PendingMatch?>(null)
+    val pendingMatch: StateFlow<PendingMatch?> = _pendingMatch.asStateFlow()
+
+    /**
+     * Completed by the user's answer, and by nothing else.
+     *
+     * A deferred rather than a channel because exactly one answer is wanted and
+     * a second press must not queue an answer for the *next* game — which is
+     * what a buffered channel would do, and it would be invisible until the
+     * scrape put the wrong metadata on a game nobody was looking at.
+     */
+    private var matchChoice: CompletableDeferred<MetadataCandidate?>? = null
+    private var artworkChoice: CompletableDeferred<String?>? = null
+
+    /**
+     * Takes the answer to "which game is this".
+     *
+     * @param candidate the match to apply, or null to take the automatic one.
+     */
+    fun chooseMatch(candidate: MetadataCandidate?) {
+        matchChoice?.complete(candidate)
+    }
+
+    /** Takes the answer to "which cover"; null keeps whatever the match carried. */
+    fun chooseArtwork(url: String?) {
+        artworkChoice?.complete(url)
+    }
+
+    private var runningJob: Job? = null
+
+    val isRunning: Boolean get() = runningJob?.isActive == true
+
+    /**
+     * Starts a scrape.
+     *
+     * @param onlyMissing when true, entries already scraped are skipped. This
+     *   is the normal case; a full re-scrape is only useful after changing
+     *   provider priority or credentials.
+     */
+    /**
+     * Fetches trailers for games that have none.
+     *
+     * A separate entry point rather than a flag on the scrape button, because it
+     * answers a different question: not "fill in what is missing" but "go and get
+     * this one field for everything that could have it".
+     */
+    fun requestTrailerRefresh() = requestScrape(onlyMissing = false, trailersOnly = true)
+
+    /**
+     * @param platformId scrape only this system's games, or null for all of them.
+     *   One console at a time is the useful unit: a scrape is hundreds of
+     *   rate-limited calls, and a library spanning a dozen systems means an hour
+     *   of them to fix artwork on one. It is also the natural retry after adding
+     *   a system, where everything else is already scraped.
+     */
+    fun requestScrape(
+        onlyMissing: Boolean = true,
+        trailersOnly: Boolean = false,
+        platformId: String? = null,
+    ) {
+        if (isRunning) return
+        /*
+         * [launchSafely] rather than `runCatching`, and the difference is visible to
+         * the user.
+         *
+         * `runCatching` catches `Throwable`, which includes `CancellationException` —
+         * so pressing Cancel reported the cancellation it had just asked for as a
+         * failure: [cancel] set the state to Idle, the coroutine then unwound through
+         * `ensureActive`, and the handler immediately overwrote Idle with
+         * "Failed: Job was cancelled". `launchSafely` rethrows cancellation and
+         * handles only real errors.
+         */
+        runningJob = scope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+            },
+        ) {
+            scrape(
+                onlyMissing = onlyMissing,
+                trailersOnly = trailersOnly,
+                platformId = platformId,
+            )
+        }
+    }
+
+    fun cancel() {
+        runningJob?.cancel()
+        runningJob = null
+        _state.value = ScrapeState.Idle
+    }
+
+    private suspend fun scrape(
+        onlyMissing: Boolean,
+        trailersOnly: Boolean = false,
+        platformId: String? = null,
+    ) = withContext(ioDispatcher) {
+        // A provider that is enabled but unconfigured contributes nothing, so a
+        // scrape with none usable would churn through the whole library and
+        // change not one row. Say so instead. The providers are asked directly
+        // because their credential requirements differ.
+        if (!aggregator.hasUsableProvider()) {
+            _state.value = ScrapeState.NotConfigured
+            return@withContext
+        }
+
+        // Only two providers carry video, and a library-wide pass against one that
+        // cannot return any is a long wait ending in "0 updated" — which reads as
+        // "there are no trailers for your games" instead of "nothing here can
+        // fetch one". Said before the work rather than after it.
+        if (trailersOnly && !aggregator.hasTrailerProvider()) {
+            _state.value = ScrapeState.NotConfigured
+            return@withContext
+        }
+        val canFetchDescriptions = !trailersOnly && aggregator.hasDescriptionProvider()
+        val canFetchCompletion = !trailersOnly && aggregator.hasCompletionProvider()
+        val askForMatches = settings.metadata.first().askForMatches
+        // Naming a system is itself a request to be asked; see below.
+        val alwaysAsk = platformId != null && !trailersOnly
+
+        val platforms = platformDao.getAll().associateBy { it.id }
+
+        /*
+         * Narrowed to one system before anything else is decided.
+         *
+         * `skipped` is then counted against this system's games rather than the
+         * whole library, so "updated 12, skipped 0" is a statement about the
+         * console that was asked about rather than a number that looks like a
+         * failure beside four thousand untouched games.
+         */
+        val all = gameDao.getVisible()
+            .let { games ->
+                if (platformId == null) games else games.filter { it.platformId == platformId }
+            }
+
+        val targets = when {
+            /*
+             * Games with no trailer, whether or not they have been scraped.
+             *
+             * Trailers arrived after most libraries were already scraped, and
+             * "only missing" means *never scraped* — so every existing game was
+             * skipped and no trailer ever appeared. Re-scraping the whole library
+             * to fetch them is hundreds of rate-limited calls for a field most of
+             * them will not have; this asks only about the ones that could gain
+             * one.
+             */
+            trailersOnly -> all.filter { it.metadata.artwork.videoUri.isNullOrBlank() }
+            // Older library rows may have been stamped "scraped" by an artwork
+            // provider before descriptions were fetched from RAWG's detail API.
+            // Treat a blank description as missing when a prose source is usable.
+            //
+            // Completion times are the same story one field later: they arrived
+            // after every existing library had already been scraped, so "only
+            // missing" meant *never scraped*, every game was skipped, and no
+            // progress bar could ever appear no matter how many times the button
+            // was pressed. Asked only of games that have no figure yet, and only
+            // when something configured could actually supply one.
+            onlyMissing -> all.filter {
+                it.metadata.lastScrapedEpochMs == null ||
+                    it.metadata.needsDescriptionRefresh(canFetchDescriptions) ||
+                    it.metadata.needsCompletionRefresh(canFetchCompletion)
+            }
+            else -> all
+        }
+
+        if (targets.isEmpty()) {
+            _state.value = ScrapeState.Completed(updated = 0, skipped = all.size)
+            return@withContext
+        }
+
+        var updated = 0
+        var skipped = 0
+        var trailersFound = 0
+
+        targets.forEachIndexed { index, game ->
+            currentCoroutineContext().ensureActive()
+            _state.value = ScrapeState.Running(
+                done = index,
+                total = targets.size,
+                currentTitle = game.title,
+                platformId = platformId,
+            )
+
+            val platform = platforms[game.platformId]
+            /*
+             * Hashed once, and only if it has not been.
+             *
+             * A full read of the ROM is by far the most expensive thing in this
+             * loop — more than the network call it enables — so the result is
+             * stored on the game and every later scrape reuses it. A file too
+             * large to read comes back null and stays null, which is the same
+             * answer as "not hashed" and takes the same path: match by name.
+             */
+            val hashed = ensureHashed(game)
+            val query = MetadataQuery(
+                    title = game.title,
+                    sortTitle = game.sortTitle,
+                    platformId = game.platformId,
+                    providerPlatformIds = platform?.providerIds.orEmpty(),
+                    fileName = game.fileName,
+                    fileSizeBytes = game.fileSizeBytes,
+                    releaseYearHint = game.metadata.releaseYear,
+                    region = game.metadata.region,
+                    crc32 = hashed.romCrc32,
+                    md5 = hashed.romMd5,
+                    sha1 = hashed.romSha1,
+            )
+
+            /*
+             * Searched once, whichever way this goes.
+             *
+             * The prompt shows what came back and the automatic path merges the
+             * same list, so asking costs a dialog rather than a second round of
+             * provider requests.
+             */
+            val candidates = aggregator.candidates(query)
+            // A full re-scrape is a request to replace; only-missing is a request
+            // to fill gaps. Anything else makes the full pass unable to change
+            // the artwork it was run to change.
+            val replaceArtwork = !onlyMissing
+
+            /*
+             * Asked on every game with an answer when one system was named.
+             *
+             * A library-wide pass only asks where the providers disagree,
+             * because a prompt offering a single answer is a press charged for
+             * nothing across a few thousand files. Scraping one console is a
+             * different act: it is short, it is deliberate, and it is what
+             * somebody does when the artwork they already have is wrong — so
+             * there the menu appears whether or not the machine thinks the
+             * choice is obvious, since it thinking so is exactly what is being
+             * disputed.
+             */
+            val ask = if (alwaysAsk) candidates.isNotEmpty() else askForMatches && candidates.size > 1
+            val chosen = if (ask) askForMatch(game, candidates) else null
+
+            val identified = if (chosen != null) {
+                aggregator.applyChosen(game.metadata, chosen)
+            } else {
+                aggregator.mergeCandidates(candidates, game.metadata, replaceArtwork)
+            }
+
+            /*
+             * Then which cover, where the providers offered more than one.
+             *
+             * Only when the user is being asked at all, and only when there is
+             * something to choose between — one cover is not a choice, and the
+             * automatic path has no business stopping for a picture.
+             */
+            val covers = if (ask) artworkOptionsOf(candidates) else emptyList()
+            val cover = if (covers.size > 1) {
+                askForArtwork(game, candidates, covers)
+            } else {
+                null
+            }
+
+            val merged = if (cover == null) {
+                identified
+            } else {
+                identified.copy(artwork = identified.artwork.copy(boxArt = cover))
+            }
+
+            /*
+             * A trailer pass counts trailers, not rows written.
+             *
+             * `merged != existing` is true for every game on every pass, because
+             * the merge always stamps `lastScrapedEpochMs`. So the pass reported
+             * the whole library as updated whether or not a single video had been
+             * found — "Updated 500" while nothing played, which reads as a
+             * playback bug and sent me looking in the wrong place twice.
+             */
+            val gained = merged.artwork.videoUri != null &&
+                game.metadata.artwork.videoUri.isNullOrBlank()
+            if (gained) trailersFound++
+
+            if (merged != game.metadata) {
+                gameDao.setMetadata(game.id, merged)
+                if (!trailersOnly || gained) updated++ else skipped++
+            } else {
+                skipped++
+            }
+        }
+
+        if (trailersOnly) {
+            ThorLog.i(
+                TAG,
+                "Trailer pass: $trailersFound found across ${targets.size} games",
+            )
+        }
+
+        // Skipped entirely for a trailer refresh. That pass exists to fill one
+        // field on games that lack it; re-fetching every folder's artwork on the
+        // way past is unrelated work the user did not ask for, and — before this —
+        // work that actively undid their icon pack.
+        if (!trailersOnly) {
+            // A platform action promises to touch only that system. Custom
+            // folders span systems, so scraping every one after a platform pass
+            // both hides the real progress and violates that scope.
+            if (platformId == null) updated += scrapeFolderArtwork(onlyMissing)
+            updated += dressPlatformFolders()
+        }
+
+        reclaimUnusedArtwork(scopedToOnePlatform = platformId != null)
+
+        _state.value = ScrapeState.Completed(updated = updated, skipped = skipped)
+    }
+
+    /**
+     * Deletes stored artwork the library no longer points at.
+     *
+     * Artwork files are named after the image rather than the game, so two games sharing a
+     * picture share one file and a re-scrape of unchanged art costs nothing. The price is that
+     * deleting an entry cannot delete its artwork — only knowing the full set of images still
+     * referenced can, which is what this collects.
+     *
+     * Skipped for a single-platform pass. That run only knows about its own system, so the set
+     * it could gather would be missing every other platform's artwork — and sweeping against a
+     * partial set would delete artwork that is still on screen.
+     */
+    private suspend fun reclaimUnusedArtwork(scopedToOnePlatform: Boolean) {
+        if (scopedToOnePlatform) return
+        if (!settings.metadata.first().keepArtworkOnDevice) return
+
+        runCatching {
+            val referenced = buildSet {
+                // Every game, not `getVisible()`. A hidden entry still owns its artwork and
+                // becomes visible again the moment it is unhidden — sweeping against the
+                // visible set alone would delete exactly those images.
+                gameDao.observeAll().first().forEach { game ->
+                    with(game.metadata.artwork) {
+                        listOfNotNull(boxArt, hero, logo, icon).forEach(::add)
+                        addAll(screenshots)
+                    }
+                }
+                folderDao.getAll().forEach { folder -> folder.artworkUri?.let(::add) }
+            }
+            artworkStore.sweep(referenced)
+        }.onFailure { ThorLog.w(TAG, "Could not reclaim unused artwork", it) }
+    }
+
+    /**
+     * Gives folders artwork from the same providers as games.
+     *
+     * A folder is usually named after a series or a system — "Zelda", "Mario
+     * Kart", "Arcade" — so the providers can find cover art for it exactly as
+     * they would for a title. Hand-picking an image for every folder is the only
+     * alternative, and it is the sort of chore that leaves folders looking like
+     * placeholder glyphs forever.
+     *
+     * Smart folders are included; their artwork is presentation, not contents.
+     * Folders whose artwork the user chose by hand are never touched — that URI is
+     * their own, and a scrape overwriting it would be the same silent revert the
+     * locked-field mechanism exists to prevent for games.
+     *
+     * @return how many folders gained artwork
+     */
+    /**
+     * The game with its fingerprints filled in, computing them if needed.
+     *
+     * Returns the game unchanged when it already has them, when the file is too
+     * large to read, or when it could not be opened. All three mean the same
+     * thing downstream — no hash, match by name — and none of them is worth
+     * retrying on the next scrape, except the last, which will simply be
+     * attempted again and fail again cheaply.
+     */
+    private suspend fun ensureHashed(game: GameEntity): GameEntity {
+        if (game.romMd5 != null) return game
+        val hashes = romHasher.hash(game.contentUri, game.fileSizeBytes) ?: return game
+        val hashed = game.copy(
+            romCrc32 = hashes.crc32,
+            romMd5 = hashes.md5,
+            romSha1 = hashes.sha1,
+        )
+        gameDao.upsert(hashed)
+        return hashed
+    }
+
+    /**
+     * Asks which game this is, and answers itself if nobody does.
+     *
+     * Returns the chosen candidate, or null meaning "use the automatic result" —
+     * which is also what the timeout produces, so the caller has one path for
+     * "nobody chose" whether that was a decision or an absence.
+     *
+     * The prompt is cleared in a `finally` because every way out of here has to
+     * clear it: a timeout, an answer, and a cancelled scrape all leave a dialog
+     * on screen otherwise, and the last of those leaves one that can never be
+     * answered.
+     */
+    private suspend fun askForMatch(
+        game: GameEntity,
+        candidates: List<MetadataCandidate>,
+    ): MetadataCandidate? {
+        val deferred = CompletableDeferred<MetadataCandidate?>()
+        matchChoice = deferred
+        _pendingMatch.value = PendingMatch(
+            entryId = game.id,
+            title = game.title,
+            candidates = candidates,
+        )
+        return try {
+            deferred.await()
+        } finally {
+            _pendingMatch.value = null
+            matchChoice = null
+        }
+    }
+
+    /**
+     * Asks which cover to keep, when more than one provider offered a different one.
+     *
+     * A separate question from the match because the answers come from different
+     * places: the provider that identified the game correctly is routinely not
+     * the one with the best art for it. Skipped where there is nothing to choose
+     * between, which is most games.
+     *
+     * @return the chosen URL, or null to keep whatever the match already carried.
+     */
+    private suspend fun askForArtwork(
+        game: GameEntity,
+        candidates: List<MetadataCandidate>,
+        options: List<ArtworkOption>,
+    ): String? {
+        val deferred = CompletableDeferred<String?>()
+        artworkChoice = deferred
+        _pendingMatch.value = PendingMatch(
+            entryId = game.id,
+            title = game.title,
+            candidates = candidates,
+            artwork = options,
+        )
+        return try {
+            deferred.await()
+        } finally {
+            _pendingMatch.value = null
+            artworkChoice = null
+        }
+    }
+
+    /**
+     * The distinct covers on offer, best-scoring provider first.
+     *
+     * Deduplicated by URL, because several providers serving the same image is
+     * not a choice — and a grid with the same picture in it twice reads as a
+     * bug rather than as an option.
+     */
+    private fun artworkOptionsOf(candidates: List<MetadataCandidate>): List<ArtworkOption> =
+        candidates
+            .sortedByDescending { it.confidence }
+            .mapNotNull { candidate ->
+                val url = candidate.artwork.boxArt ?: candidate.artwork.cellImage
+                url?.takeIf(String::isNotBlank)?.let { ArtworkOption(it, candidate.providerId) }
+            }
+            .distinctBy(ArtworkOption::url)
+
+    private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
+        /*
+         * Platform folders are never scraped, and this is the important part.
+         *
+         * A platform folder is titled after a machine — "Super Nintendo", "Sega
+         * Dreamcast" — and these providers index games, not hardware. Asked about
+         * a console they answer with a game that merely mentions it, so every
+         * system on the grid ended up wearing an unrelated screenshot. Worse, a
+         * full rescrape then wrote that over the icon pack's artwork, which is
+         * why the platforms looked right until the next scrape and never again.
+         *
+         * A platform's artwork has exactly one source — an installed pack — and
+         * nothing else may write it.
+         */
+        val folders = folderDao.getAll()
+            .filter { PlatformFolders.platformIdOf(it.id) == null }
+
+        val targets = if (onlyMissing) folders.filter { it.artworkUri == null } else folders
+        if (targets.isEmpty()) return 0
+
+        var updated = 0
+        targets.forEachIndexed { index, folder ->
+            currentCoroutineContext().ensureActive()
+            _state.value = ScrapeState.Running(
+                done = index,
+                total = targets.size,
+                currentTitle = folder.title,
+            )
+
+            val scraped = aggregator.scrape(
+                query = MetadataQuery(
+                    title = folder.title,
+                    sortTitle = folder.sortTitle,
+                    // No platform: a folder spans systems, and constraining the
+                    // search to one would miss most of the matches.
+                    platformId = "",
+                    providerPlatformIds = emptyMap(),
+                    // A folder has no file, so the filename and size matchers
+                    // have nothing to work with and only title matching applies.
+                    fileName = folder.title,
+                    fileSizeBytes = 0L,
+                ),
+                existing = GameMetadata.EMPTY,
+            )
+
+            // Square art first, then the cover: a folder renders in the same
+            // square cell a game does.
+            val artwork = scraped.artwork.icon
+                ?: scraped.artwork.boxArt
+                ?: scraped.artwork.hero
+            if (artwork != null) {
+                folderDao.upsert(folder.copy(artworkUri = artwork))
+                updated++
+            }
+        }
+        return updated
+    }
+
+    /**
+     * Gives platform folders artwork from the games inside them.
+     *
+     * Platform folders are never *searched* for — see [scrapeFolderArtwork] —
+     * because these providers index games, not hardware, and asking one about
+     * "Super Nintendo" returns a game that merely mentions it. Removing that
+     * left the folders bare, which is the opposite fault: after a scrape the
+     * artwork was sitting right there in the library and none of it was used.
+     *
+     * So the folder wears its own best game's cover. The ordering is fixed —
+     * landmark titles first, then play count, then play time, then title — which
+     * makes it representative rather than arbitrary, and makes it the *same*
+     * every run. That last part is what the original complaint was really about:
+     * not that a game's art appeared, but that a different one appeared each time.
+     *
+     * An installed icon pack always wins; a platform it dressed is skipped
+     * entirely, so this can never undo the user's own artwork.
+     */
+    private suspend fun dressPlatformFolders(): Int {
+        val platforms = platformDao.getAll().associateBy { it.id }
+        val folders = folderDao.getAll()
+            .mapNotNull { folder ->
+                PlatformFolders.platformIdOf(folder.id)?.let { platformId -> folder to platformId }
+            }
+            // Dressed by a pack, and not ours to touch.
+            .filter { (_, platformId) -> platforms[platformId]?.artworkPackId == null }
+
+        if (folders.isEmpty()) return 0
+
+        val gamesByPlatform = gameDao.getVisible().groupBy { it.platformId }
+        var updated = 0
+
+        folders.forEach { (folder, platformId) ->
+            currentCoroutineContext().ensureActive()
+
+            val artwork = gamesByPlatform[platformId]
+                .orEmpty()
+                .sortedWith(
+                    compareBy<GameEntity> {
+                        PlatformFlagships.rankOf(platformId, it.title) ?: FLAGSHIP_MISS
+                    }
+                        .thenByDescending { it.launchCount }
+                        .thenByDescending { it.totalPlayMillis }
+                        .thenBy { it.sortTitle },
+                )
+                .firstNotNullOfOrNull { it.metadata.artwork.cellImage }
+                ?: return@forEach
+
+            if (folder.artworkUri == artwork) return@forEach
+            folderDao.upsert(folder.copy(artworkUri = artwork))
+            updated++
+        }
+
+        return updated
+    }
+
+    /** Scrapes one entry, used by the "refresh metadata" context action. */
+    fun requestScrapeFor(gameId: String) {
+        if (isRunning) return
+        // Cancellation-safe for the same reason as [requestScrape].
+        runningJob = scope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                ThorLog.e(TAG, "Scrape failed for $gameId", error)
+                _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+            },
+        ) {
+            withContext(ioDispatcher) {
+                val game: GameEntity = gameDao.getById(gameId) ?: return@withContext
+                val platform = platformDao.getById(game.platformId)
+                _state.value = ScrapeState.Running(
+                    done = 0,
+                    total = 1,
+                    currentTitle = game.title,
+                    platformId = game.platformId,
+                )
+
+                val merged = aggregator.scrape(
+                    query = MetadataQuery(
+                        title = game.title,
+                        sortTitle = game.sortTitle,
+                        platformId = game.platformId,
+                        providerPlatformIds = platform?.providerIds.orEmpty(),
+                        fileName = game.fileName,
+                        fileSizeBytes = game.fileSizeBytes,
+                        releaseYearHint = game.metadata.releaseYear,
+                        region = game.metadata.region,
+                    ),
+                    existing = game.metadata,
+                )
+                gameDao.setMetadata(gameId, merged)
+                _state.value = ScrapeState.Completed(updated = 1, skipped = 0)
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "MetadataSync"
+
+        /** Sorts every non-flagship below every flagship, without excluding it. */
+        const val FLAGSHIP_MISS = Int.MAX_VALUE
+    }
+}
+
+/** Blank prose is missing even on an older row that already has a scrape timestamp. */
+internal fun GameMetadata.needsDescriptionRefresh(providerAvailable: Boolean): Boolean =
+    providerAvailable &&
+        GameMetadata.FIELD_DESCRIPTION !in lockedFields &&
+        description.isNullOrBlank()
+
+/**
+ * No completion figure is missing on an already-scraped row, same as prose.
+ *
+ * Both sources are checked because they answer at different resolutions and
+ * either is enough to draw the bar: IGDB gives submitted play-throughs in
+ * seconds, RAWG an average in whole hours. A game that came back from a scrape
+ * with neither is one nobody has submitted a time for, and asking again next
+ * pass costs a request that will keep returning nothing — but that is the same
+ * bargain already struck for descriptions, and it is the only way a figure added
+ * upstream later ever arrives.
+ */
+internal fun GameMetadata.needsCompletionRefresh(providerAvailable: Boolean): Boolean =
+    providerAvailable && timeToBeat == null && completionMinutes == null

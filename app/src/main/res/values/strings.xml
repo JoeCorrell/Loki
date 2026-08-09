@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Loki Launcher</string>
+    <!-- "AYN Thor" is the handheld this runs on, not the app; it stays. -->
+    <string name="launcher_description">Dual screen launcher for the AYN Thor</string>
+
+    <!--
+      Shown in the system's accessibility settings, which is where the user has to
+      go to turn this on. Written to answer the question that screen provokes:
+      why does a launcher want this, and what will it do with it.
+    -->
+    <string name="mouse_service_summary">Controller pointer for apps and games</string>
+    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nIt is also what lets Loki\'s on-screen keyboard type into other apps. To do that it can read the text field you have selected, which means this permission allows reading window contents. Loki uses it only to find the field you tapped and to fill it in, and stores nothing.</string>
+
+    <!--
+      Shown over the black surface while a stream is being set up.
+
+      Named rather than generic, because launching a game on the PC can take
+      half a minute and a bare spinner for that long reads as a hang.
+    -->
+    <string name="stream_connecting">Starting %1$s…</string>
+    <!-- The core's own name for the step it is on, so a stall says where. -->
+    <string name="stream_stage">Connecting — %1$s…</string>
+
+    <!--
+      The recording notification, which is the only control a recording has once
+      the user has left the launcher for whatever they are recording.
+    -->
+    <string name="recording_channel">Screen recording</string>
+    <string name="recording_channel_summary">Controls for a recording in progress</string>
+    <string name="recording_title">Loki is recording</string>
+    <string name="recording_text">Tap to open Loki</string>
+    <string name="recording_stop">Stop</string>
+    <string name="recording_screen">Record screen instead</string>
+</resources>
