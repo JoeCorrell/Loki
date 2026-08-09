@@ -186,7 +186,7 @@ Files are identified by what they are rather than by what they were named: CRC, 
 
 Completion times from IGDB and RAWG are measured against your own play time and drawn as progress bars in the information panel and in couch mode. Each game keeps a cover and up to three screenshots, and the bumpers step between them. Artwork can also be imported from another launcher's media folder, with Loki matching its files back to your library.
 
-Platform artwork can be imported from an icon pack, from a folder or from a zip, and Loki draws a coherent set of platform highlight icons of its own that can be turned off if an imported pack should take over. A pack whose folders are named the way the emulator front-ends name them is understood without renaming anything, and artwork for systems Loki does not model yet is kept rather than discarded, so adding that system later is enough to make its icon appear.
+Platform artwork can be imported from an icon pack, from a folder or from a zip, and Loki ships a coherent set of platform highlight icons — drawn by **GiuPhoenix** — that can be turned off if an imported pack should take over. A pack whose folders are named the way the emulator front-ends name them is understood without renaming anything, and artwork for systems Loki does not model yet is kept rather than discarded, so adding that system later is enough to make its icon appear.
 
 Installing a pack replaces what is already there on every system it covers, including systems you dressed by hand — a pack that quietly skipped those was indistinguishable from a pack that had not installed. Nothing is lost in the process: the images you picked yourself are set aside and handed straight back if you uninstall the pack, and with two packs installed, removing the newer one reveals the older rather than stripping the system bare. Cover art and backdrop art for any individual game or platform can also be picked from a file by hand.
 
@@ -416,6 +416,12 @@ sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
 ```
 
 The original design document — the dual-screen architecture and the rules behind it — is kept at [docs/DESIGN.md](docs/DESIGN.md). It was written under the old THOR name and has not been maintained since, so read it as history rather than as a description of the code as it stands.
+
+<br>
+
+## Credits
+
+The platform icons Loki ships with — one for every console it knows about — were drawn by **GiuPhoenix**. They are the set you see on every platform folder before an icon pack is imported, and the launcher is a great deal better looking for them.
 
 <br>
 
