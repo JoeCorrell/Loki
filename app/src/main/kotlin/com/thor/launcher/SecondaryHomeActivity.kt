@@ -1,7 +1,9 @@
 package com.thor.launcher
 
+import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Bundle
+import android.view.Display
 import androidx.activity.ComponentActivity
 import com.thor.core.common.log.ThorLog
 import com.thor.core.display.hideSystemBars
@@ -129,15 +131,27 @@ class SecondaryHomeActivity : ComponentActivity() {
      * That is why pressing Home on the *main* panel fixed it by hand — it resumed the
      * launcher, which fired the repair path. This does the same thing deliberately.
      *
-     * `singleTask` means this brings the existing instance forward rather than
-     * building a second one, and no display is named: the activity returns to the
-     * task it already lives in, on the main panel.
+     * The main display is named explicitly, and leaving it out was a bug.
+     *
+     * A started activity inherits the *starting* activity's display unless told
+     * otherwise, and this activity lives on the second panel — so an unqualified
+     * start put `LauncherActivity` over there instead of bringing the existing one
+     * forward. A task cannot span two displays, so `singleTask` could not reuse the
+     * instance on the main panel and the system built a second one: two launchers,
+     * one per screen, and a task it then kept restoring as that display's home.
+     *
+     * With the display named, `singleTask` finds the instance already on the main
+     * panel and brings that forward instead of creating anything.
      */
     private fun reclaimPanel() {
         val intent = Intent(this, LauncherActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-        runCatching { startActivity(intent) }
+        val options = ActivityOptions.makeBasic()
+            .setLaunchDisplayId(Display.DEFAULT_DISPLAY)
+            .toBundle()
+
+        runCatching { startActivity(intent, options) }
             .onFailure { error ->
                 // Losing this must not take the panel with it: the press has already
                 // been reported, so the launcher still recovers if it happens to be

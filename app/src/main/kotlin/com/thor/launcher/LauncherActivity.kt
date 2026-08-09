@@ -2,6 +2,7 @@ package com.thor.launcher
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -121,6 +122,27 @@ class LauncherActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        /*
+         * This activity belongs on the main panel and nowhere else.
+         *
+         * The second panel is a `Presentation` owned by this activity, and
+         * `SecondaryHomeActivity` is what the system starts over there. An instance
+         * of *this* on the second display is therefore two launchers at once: two
+         * compositions, two view models, two cursors, and a task the system will keep
+         * restoring as that display's home because it found it there once.
+         *
+         * It is reachable by mistake — anything starting this activity from a context
+         * on the other display lands here, because a started activity inherits the
+         * starting one's display and a task cannot span two. Finishing immediately
+         * both prevents the duplicate and clears one that a previous version left
+         * behind, which is the only way to get rid of it without wiping app data.
+         */
+        val onWrongPanel = display?.displayId?.let { it != Display.DEFAULT_DISPLAY } == true
+        if (onWrongPanel) {
+            finish()
+            return
+        }
 
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
