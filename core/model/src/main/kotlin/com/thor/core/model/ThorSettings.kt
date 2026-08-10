@@ -107,7 +107,16 @@ data class ThorSettings(
     fun has(extension: LauncherExtension): Boolean = extension.id in enabledExtensions
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 1
+        /**
+         * 2 — ScreenScraper became the leading metadata source.
+         *
+         * A version bump rather than only a change of default, because the
+         * defaults here are *written into* the stored document: the settings
+         * serializer encodes them, so every device already carries a
+         * `providerPriority` map of its own and a new default would never reach
+         * one. The migration in `SettingsSerializer` rewrites it.
+         */
+        const val CURRENT_SCHEMA_VERSION = 2
         val DEFAULT = ThorSettings()
     }
 }
@@ -600,55 +609,54 @@ data class MetadataSettings(
      * provider is indistinguishable, from the grid, from one that found no match.
      */
     val enabledProviders: Set<String> = setOf(
-        "artscraper",
+        // Everything, for the systems this launcher is pointed at: the title,
+        // credits, date, genre, players, synopsis and the artwork, matched on the
+        // file's hash rather than on its name.
         "screenscraper",
+        // The one thing ScreenScraper has no asset for — a square grid image for
+        // a cell. See ICON_PROVIDER in the aggregator.
         "steamgriddb",
+        // Needs no credential of any kind, so it is what answers when a build has
+        // no developer key compiled in and the user has entered no account.
         "wikidata",
-        "rawg",
-        "igdb",
+        /*
+         * ArtScraper, IGDB and RAWG are off by default rather than gone.
+         *
+         * Each was here to cover something ScreenScraper could not while it was
+         * ranked below them: ArtScraper for catalogue-exact artwork, IGDB for
+         * screenshots that could be filtered by shape, RAWG for prose about
+         * modern titles. With ScreenScraper leading and hash-matching, the first
+         * two are answering questions already answered — and every scrape is a
+         * network round trip per game per provider, so a source that agrees with
+         * the one above it costs time and quota to be ignored.
+         *
+         * RAWG is the one with a real remaining case: it knows current PC and
+         * console releases that a retro database does not. That is why these are
+         * a default rather than a deletion — each has a switch of its own in
+         * Settings › Metadata, and the code behind it is untouched.
+         */
     ),
     /** Provider id -> priority; lower wins when merging conflicting fields. */
     val providerPriority: Map<String, Int> = mapOf(
         /*
-         * Above ScreenScraper, and the only entry here that earns its place by
-         * method rather than by catalogue size.
+         * ScreenScraper leads, now that the build carries a developer key.
          *
-         * ArtScraper is told the ROM's CRC32 and looks it up in the No-Intro and
-         * Redump catalogues, so when it answers it has identified the exact dump
-         * — right game, right region, right revision — and libretro's thumbnails
-         * are named after those same catalogues, making the artwork a URL rather
-         * than a search result. There is nothing for a lower-ranked source to
-         * improve on. When it has no answer it returns none, and everything below
-         * competes exactly as it did before.
+         * It identifies a file the same way ArtScraper does — the CRC32, MD5 and
+         * SHA1 are all sent, and a hash hit is an answer about the exact dump
+         * rather than about the closest title — and on top of that it is the only
+         * source here that answers the *whole* question. ArtScraper returns
+         * artwork against a catalogue entry; ScreenScraper returns the title,
+         * developer, publisher, date, genre, players, synopsis and the artwork,
+         * for precisely the systems this launcher is pointed at.
          *
-         * It is also the only one of these that needs no credential, so on a
-         * fresh install it is the sole source that can put a cover on a cell.
+         * Ranking it below anything meant the launcher's deepest source only ever
+         * filled in what the one above it had missed.
          */
-        "artscraper" to 0,
-        "screenscraper" to 1,
-        "steamgriddb" to 2,
-        // Above RAWG: Wikidata needs no key, so on a fresh install it is the
-        // only one of the two that can answer at all.
-        "wikidata" to 3,
-        // Above RAWG for artwork reasons rather than textual ones: IGDB is the
-        // only source that lets the *shape* of an image be asked for, so where
-        // both answer, its screenshots are the ones that fit the panel.
-        "igdb" to 4,
-        "rawg" to 5,
+        "screenscraper" to 0,
+        "steamgriddb" to 1,
+        // Needs no key, so it is what answers on a build with no credentials.
+        "wikidata" to 2,
     ),
-    /**
-     * Where the ArtScraper companion is, as `192.168.1.20` or `desktop.local:8756`.
-     *
-     * Empty by default and filled in by discovery rather than by typing: the
-     * launcher broadcasts on the local network and anything running
-     * `artscraper serve` answers with its own address. Typed entry stays as the
-     * fallback for a host on another subnet, or a network that drops broadcast
-     * traffic.
-     *
-     * An address rather than a credential, which is the whole difference between
-     * this provider and every other one here.
-     */
-    val artScraperHost: String = "",
     /**
      * Copy scraped artwork into the app's own storage instead of linking to it.
      *
@@ -671,17 +679,6 @@ data class MetadataSettings(
      */
     val screenScraperUser: String = "",
     val screenScraperPassword: String = "",
-    /**
-     * IGDB, which authenticates through Twitch because Amazon owns both.
-     *
-     * Two values rather than one key: the pair is exchanged for a bearer token
-     * that the provider caches. Both are obtained from the Twitch developer
-     * console in a couple of minutes, with no approval step — which is the
-     * reason this provider exists alongside ScreenScraper rather than instead
-     * of it.
-     */
-    val igdbClientId: String = "",
-    val igdbClientSecret: String = "",
     val scrapeOnlyMissing: Boolean = true,
     /**
      * Stop and ask during a *library-wide* scrape as well.

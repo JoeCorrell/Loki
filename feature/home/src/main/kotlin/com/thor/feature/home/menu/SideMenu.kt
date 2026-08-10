@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapVert
@@ -47,7 +48,7 @@ import com.thor.core.ui.component.ThorMenuRow
 import com.thor.feature.home.shell.icon
 
 /**
- * The four things the Start panel does.
+ * The things the Start panel does.
  *
  * The previous menu listed twenty-two entries, most of which either duplicated
  * a settings page or opened something reachable elsewhere. Each of these acts
@@ -60,6 +61,7 @@ enum class SideMenuAction(
     val icon: ImageVector,
 ) {
     APPS("Apps", "Every installed application", Icons.Rounded.Apps),
+    FILES("Files", "Browse the device's storage", Icons.Rounded.FolderOpen),
     SORT("Sort", "Reorder the grid", Icons.Rounded.SwapVert),
     NEW("New", "Create a folder on this page", Icons.Rounded.Add),
     GRID("Grid", "Rearrange icons and resize the grid", Icons.Rounded.GridView),

@@ -19,6 +19,16 @@ data class FileEntry(
     val isHidden: Boolean,
     /** Whether this process can actually write here; a card may be mounted read-only. */
     val canWrite: Boolean,
+    /**
+     * How many things are directly inside, for a directory.
+     *
+     * Null when it was not counted, which is not the same as zero and is why this
+     * is nullable rather than defaulting to 0 — a row that says "0 items" about a
+     * folder nobody looked inside is a claim, and a wrong one. Counting costs a
+     * `readdir` per directory, so the repository only does it where the parent is
+     * small enough for that to be free; see `FileRepository.list`.
+     */
+    val childCount: Int? = null,
 ) {
     /**
      * The bit after the last dot, lowercased, or empty.

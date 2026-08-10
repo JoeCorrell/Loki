@@ -57,7 +57,6 @@ fun SettingsPageContent(
     noScreenshotProvider: Boolean = false,
     /** Whether the build carries ScreenScraper developer credentials. */
     screenScraperKeyMissing: Boolean = false,
-    discoveringArtScraper: Boolean = false,
     isDefaultLauncher: Boolean,
     keyCaptureEnabled: Boolean,
     capturedKeys: List<RawKeyPress>,
@@ -126,7 +125,7 @@ fun SettingsPageContent(
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
                 checkingProviders, artworkOnlyProviders, noScreenshotProvider,
-                screenScraperKeyMissing, discoveringArtScraper,
+                screenScraperKeyMissing,
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
             SettingsPage.SMART_FOLDERS -> SmartFoldersPage(
@@ -235,10 +234,9 @@ fun rowCountFor(
     // The bundled switch, two pack imports and the artwork import, then one row
     // per installed pack.
     SettingsPage.ICON_PACKS -> IMPORT_ROWS + iconPackCount
-    // Scrape, only-missing, ask-me, trailers, check, one per provider, then
-    // the credentials.
-    // ArtScraper's find button and address, four credential rows, then IGDB's pair.
-    SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 8
+    // Scrape, only-missing, ask-me, trailers, check, one switch per provider,
+    // then three credential rows: SteamGridDB's key and ScreenScraper's pair.
+    SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 3
     SettingsPage.SORTING -> 2
     SettingsPage.ACHIEVEMENTS -> ACHIEVEMENTS_ROWS
     // Two keys and the debrid status line, then one row per indexer, then the

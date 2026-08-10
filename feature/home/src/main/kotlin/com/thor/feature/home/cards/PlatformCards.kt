@@ -98,10 +98,26 @@ fun platformCards(
             favouriteCount = entries.count(GameEntry::isFavorite),
             totalPlayMillis = entries.sumOf { it.stats.totalPlayMillis },
             lastPlayedEpochMs = played.firstOrNull()?.stats?.lastPlayedEpochMs,
-            previewUri = played.firstOrNull()
-                ?.metadata
-                ?.artwork
-                ?.let { it.backgroundImage ?: it.boxArt },
+            /*
+             * The card's own image comes from the platform, or from nowhere.
+             *
+             * This was the most recently played game's backdrop, falling back to
+             * its cover — so the card for a system was a picture of one game on
+             * it, changing whenever something else was launched. On a library
+             * with covers rather than backdrops it was a 2:3 box scan stretched
+             * across a wide card, which is the same fault the information panel's
+             * backdrop had.
+             *
+             * The two sources left are the two the user controls: the hero from
+             * an installed icon pack, and an image they chose themselves. With
+             * neither, the card draws its own gradient — which says nothing about
+             * the system but does not claim to be it.
+             *
+             * `recentArtwork` below is untouched, and is not the same thing: that
+             * strip is explicitly a row of covers from the library, labelled as
+             * such, rather than an image standing in for the system itself.
+             */
+            previewUri = platform.artwork.heroUri,
             // Falls back to the whole ranked list, not just the played half: a
             // system nothing has been launched on should still show its covers
             // rather than an empty row where the covers go.

@@ -45,8 +45,26 @@ object PlatformIcons {
      */
     @DrawableRes
     fun preferredOver(artwork: PlatformArtwork?, platformId: String?): Int? {
-        val ownedByUserOrPack = artwork?.packId != null
-        return if (ownedByUserOrPack) null else forPlatform(platformId)
+        /*
+         * An *icon* is what displaces the bundled icon. Ownership alone is not.
+         *
+         * This asked only whether somebody owned the artwork, which is the wrong
+         * question by one word, and the damage it did was invisible from here:
+         * choosing a backdrop for a platform calls `setPlatformArtwork` with a
+         * hero and no icon, and that stamps the ownership marker across the whole
+         * record. The marker then read as "the user has dressed this system", so
+         * the shipped icon stood aside — for a slot the user had never touched.
+         * Picking a background image deleted the console's icon, which is not a
+         * trade anybody offered them.
+         *
+         * The bundled artwork is a square platform icon and nothing else, so the
+         * only thing that can legitimately replace it is another icon. A hero, a
+         * wordmark, or an ownership marker with nothing behind it leave it where
+         * it was — which also hands the icons back to anyone this already
+         * happened to, with nothing for them to re-import.
+         */
+        val ownedIcon = artwork?.packId != null && !artwork.iconUri.isNullOrBlank()
+        return if (ownedIcon) null else forPlatform(platformId)
     }
 
     /**

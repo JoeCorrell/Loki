@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the explorer may hand to another app.
+
+  Deliberately the whole of external storage rather than a curated list of
+  folders. The explorer browses wherever the user points it — a ROM on a card, a
+  screenshot in DCIM, an APK in Downloads — and a provider that only covered the
+  places thought of in advance would refuse exactly the files somebody went
+  looking for.
+
+  `root-path` is the one that reaches a removable card: `/storage/XXXX-XXXX` is
+  not under `getExternalFilesDir` or under `Environment`'s external storage, so
+  external-path alone leaves every SD card file unopenable.
+
+  The app's own private directories are not listed. Nothing in them is the user's
+  to open, and publishing them would let any app an intent is sent to read the
+  launcher's database.
+-->
+<paths>
+    <external-path
+        name="storage"
+        path="." />
+    <root-path
+        name="volumes"
+        path="/storage/" />
+</paths>

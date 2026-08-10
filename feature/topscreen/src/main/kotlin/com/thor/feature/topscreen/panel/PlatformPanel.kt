@@ -752,22 +752,6 @@ internal fun platformAccentBrush(accent: Color, alpha: Float = 1f): Brush {
     }
 }
 
-/** Chooses stable platform backdrop art from flagship and play-history ranking. */
-fun representativeImageFor(platformId: String, children: List<GridEntry>): String? {
-    val games = children.filterIsInstance<GameEntry>()
-    if (games.isEmpty()) return null
-
-    val ranked = games.sortedWith(
-        compareBy<GameEntry> { PlatformFlagships.rankOf(platformId, it.title) ?: FLAGSHIP_MISS }
-            .thenByDescending { it.stats.launchCount }
-            .thenByDescending { it.stats.totalPlayMillis }
-            .thenBy { it.sortTitle },
-    )
-    // Key art or the cover, never a screenshot — the same rule the game panel follows, and
-    // reinstating it here would put a stretched 4:3 capture behind the system's own dossier.
-    return ranked.firstNotNullOfOrNull { game -> game.metadata.artwork.backgroundImage }
-}
-
 private const val FLAGSHIP_MISS = Int.MAX_VALUE
 private const val PLATFORM_PROFILE_SCALE = .82f
 private const val PLATFORM_PANEL_WIDTH = .395f

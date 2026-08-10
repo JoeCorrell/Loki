@@ -49,6 +49,7 @@ include(":feature:home")
 include(":feature:topscreen")
 include(":feature:settings")
 include(":feature:search")
+include(":feature:files")
 include(":feature:movies")
 include(":feature:stream")
 

@@ -23,15 +23,16 @@ import javax.inject.Singleton
 /**
  * ScreenScraper — the deepest catalogue for retro systems.
  *
- * Unlike the other providers this one matches on the *file*, not the title:
- * `jeuInfos.php` is given the ROM's name, size and system id, and ScreenScraper
- * resolves it against its own dump database. That makes it far more accurate
- * than a title search for exactly the platforms THOR targets, where filenames
- * follow No-Intro and Redump conventions.
+ * Matched on the *file* first, and only then on the title. `jeuInfos.php` is
+ * given the ROM's hashes, name and size, and ScreenScraper resolves that against
+ * its own dump database — which for a library named to No-Intro and Redump
+ * conventions is exact, and needs no fuzzy confidence at all: a hit is the right
+ * game, reported at 1.0.
  *
- * It also means a result needs no fuzzy confidence: a hit is the right game.
- * The aggregator's floor is satisfied by reporting full confidence, and a miss
- * simply returns nothing.
+ * A file it has never seen falls through to [searchByName]. That path is a
+ * guess and is scored like one, because it was the absence of it that made a
+ * library of ordinarily-named files come back empty from a database that had
+ * every one of those games.
  */
 @Singleton
 class ScreenScraperProvider @Inject constructor(
@@ -139,23 +140,87 @@ class ScreenScraperProvider @Inject constructor(
             ?.build()
             ?: return emptyList()
 
-        return try {
-            val body = get(url.toString()) ?: return emptyList()
-            val game = json.decodeFromString<SsEnvelope>(body).response?.jeu
-                ?: return emptyList()
-            listOf(game.toCandidate(query))
+        val byFile = try {
+            val body = get(url.toString())
+            body?.let { json.decodeFromString<SsEnvelope>(it).response?.jeu }
         } catch (e: IOException) {
             ThorLog.w(TAG, "Request failed for '${query.fileName}'", e)
-            emptyList()
+            null
         } catch (e: IllegalStateException) {
             // A quota rejection comes back as plain text rather than JSON, so a
             // parse failure here is expected rather than exceptional.
             ThorLog.w(TAG, "Unexpected response for '${query.fileName}'", e)
-            emptyList()
+            null
         } catch (e: IllegalArgumentException) {
             ThorLog.w(TAG, "Malformed response for '${query.fileName}'", e)
-            emptyList()
+            null
         }
+
+        if (byFile != null) return listOf(byFile.toCandidate(query))
+
+        return searchByName(query, systemId, config)
+    }
+
+    /**
+     * The fallback for a file ScreenScraper's dump database has never seen.
+     *
+     * `jeuInfos.php` identifies a *file*: given a hash it is exact, and given
+     * neither a known hash nor a No-Intro filename it returns nothing at all.
+     * That is the right behaviour for what it is and it was the whole of this
+     * provider, which meant a library named the way people actually name
+     * things — `Super Mario World.smc` rather than `Super Mario World (USA).sfc`
+     * — came back empty from a database that has the game, the cover and the
+     * screenshots sitting right there. Verified against the live API: the first
+     * name misses, the second hits, and the search endpoint finds it from either.
+     *
+     * So when the file is not recognised, the *title* is asked about instead.
+     * Every candidate is scored on how well its name matches rather than being
+     * trusted, because this endpoint answers a question about a string: searching
+     * for "Mario" returns thirty games and all of them are real answers to what
+     * was asked and not to what was meant.
+     */
+    private suspend fun searchByName(
+        query: MetadataQuery,
+        systemId: String,
+        config: com.thor.core.model.MetadataSettings,
+    ): List<MetadataCandidate> {
+        val term = query.title.trim().takeIf { it.length >= MIN_SEARCH_TERM } ?: return emptyList()
+
+        val url = "$BASE_URL/jeuRecherche.php".toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("softname", SOFT_NAME)
+            ?.addQueryParameter("output", "json")
+            ?.addQueryParameter("systemeid", systemId)
+            ?.addQueryParameter("recherche", term)
+            ?.apply { addCredentials(config) }
+            ?.build()
+            ?: return emptyList()
+
+        val games = try {
+            get(url.toString())?.let { json.decodeFromString<SsEnvelope>(it).response?.jeux }
+        } catch (e: IOException) {
+            ThorLog.w(TAG, "Name search failed for '$term'", e)
+            null
+        } catch (e: IllegalStateException) {
+            ThorLog.w(TAG, "Unexpected search response for '$term'", e)
+            null
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Malformed search response for '$term'", e)
+            null
+        } ?: return emptyList()
+
+        /*
+         * Only the candidates worth offering, best first.
+         *
+         * Capped rather than returned whole: thirty results per game, each
+         * carrying its full media list, is thirty times the parsing and thirty
+         * rows in the "which game is this?" dialog for one answer.
+         */
+        return games
+            .map { it.toCandidate(query, confidence = TitleMatcher.confidence(term, it.names.pick(query.region).orEmpty())) }
+            .filter { it.confidence >= NAME_MATCH_FLOOR }
+            .sortedByDescending { it.confidence }
+            .take(MAX_SEARCH_RESULTS)
     }
 
     /**
@@ -197,7 +262,19 @@ class ScreenScraperProvider @Inject constructor(
         }
     }
 
-    private fun SsGame.toCandidate(query: MetadataQuery): MetadataCandidate {
+    private fun SsGame.toCandidate(
+        query: MetadataQuery,
+        /**
+         * How sure we are this is the right game.
+         *
+         * 1.0 for a hit from `jeuInfos.php`, which matched the file itself. Lower
+         * for one dredged up by name from `jeuRecherche.php`, where the database
+         * has answered a question about a *string* and the aggregator's
+         * confidence floor is the thing standing between a loose match and
+         * somebody else's cover.
+         */
+        confidence: Float = 1f,
+    ): MetadataCandidate {
         val region = query.region
         val year = dates.pick(region)?.take(4)?.toIntOrNull()
 
@@ -205,9 +282,7 @@ class ScreenScraperProvider @Inject constructor(
             providerId = ID,
             remoteId = id?.toString().orEmpty(),
             matchedTitle = names.pick(region) ?: query.title,
-            // A filename match is exact, so there is nothing to be uncertain
-            // about; the aggregator's confidence floor exists for title guesses.
-            confidence = 1f,
+            confidence = confidence,
             metadata = GameMetadata(
                 description = synopsis.pickLanguage(),
                 genres = genres.orEmpty().mapNotNull { it.names.pickLanguage() }.distinct(),
@@ -280,11 +355,23 @@ class ScreenScraperProvider @Inject constructor(
              */
             hero = pick("fanart"),
             logo = pick("wheel", "wheel-hd", "screenmarquee"),
-            // ScreenScraper has no square icon type; `wheel-carbon-steel` and
-            // the support (cartridge) scans are the closest to 1:1, and a
-            // cartridge photo reads far better in a square cell than a cropped
-            // box scan does.
-            icon = pick("support-2D", "wheel-carbon-steel"),
+            /*
+             * No icon. ScreenScraper has nothing square that is a picture of the game.
+             *
+             * This was `support-2D`, then `wheel-carbon-steel`, on the reasoning that they
+             * are the closest things here to 1:1 — which is true and beside the point.
+             * `support-2D` is a scan of the *cartridge or disc*: a photograph of grey
+             * plastic with a small label on it, or a silver circle. It is 1:1, it is not an
+             * icon of the game, and a grid filled with them is a shelf of media rather than
+             * a library of titles. That is precisely what it looked like on the device.
+             *
+             * The square cell icon is SteamGridDB's, whose `grids` endpoint serves 1:1
+             * images that are cover art *composed* for a square frame. Nothing else here
+             * holds one, so this slot is left empty rather than filled with the nearest
+             * shape to hand — an empty icon falls through to the box art, which is at least
+             * a picture of the game.
+             */
+            icon = null,
             screenshots = pickWide(region),
             videoUri = pick("video-normalized", "video"),
         )
@@ -320,7 +407,11 @@ class ScreenScraperProvider @Inject constructor(
     private data class SsEnvelope(val response: SsResponse? = null)
 
     @Serializable
-    private data class SsResponse(val jeu: SsGame? = null)
+    private data class SsResponse(
+        val jeu: SsGame? = null,
+        /** `jeuRecherche.php` answers with a list where `jeuInfos.php` answers with one. */
+        val jeux: List<SsGame>? = null,
+    )
 
     @Serializable
     private data class SsGame(
@@ -407,6 +498,36 @@ class ScreenScraperProvider @Inject constructor(
 
         /** Identifies this client to ScreenScraper in its request logs. */
         private const val SOFT_NAME = "Loki"
+
+        /**
+         * Below this length a search term matches half the database.
+         *
+         * "Ico" is three characters and a real game, so this is deliberately not
+         * set where a person would draw it — the endpoint is asked, and the score
+         * below decides. One and two character titles are where it stops being a
+         * question worth a network request.
+         */
+        private const val MIN_SEARCH_TERM = 3
+
+        /**
+         * How well a name has to match before it is offered at all.
+         *
+         * Above the aggregator's own floor, and for a reason: this is the one
+         * path here that can be confidently wrong. A hash match cannot attach
+         * the wrong game's cover and a name match can, so the bar for even
+         * entering the merge is higher than the bar for surviving it.
+         */
+        private const val NAME_MATCH_FLOOR = 0.55f
+
+        /**
+         * How many name matches are worth carrying.
+         *
+         * Searching for "Mario" returns thirty games, each with its full media
+         * list attached. All thirty are honest answers to what was asked and
+         * twenty-seven of them are not the game — so they are parsing time, and
+         * rows in the "which game is this?" dialog, spent on nothing.
+         */
+        private const val MAX_SEARCH_RESULTS = 5
 
         /**
          * The application's registered developer key, compiled in at build time.

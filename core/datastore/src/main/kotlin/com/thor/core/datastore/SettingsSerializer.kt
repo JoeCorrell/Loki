@@ -133,15 +133,46 @@ class SettingsSerializer @Inject constructor() : Serializer<ThorSettings> {
     /**
      * Applies schema migrations.
      *
-     * Version 1 is the initial schema, so this is currently a version stamp
-     * only; future migrations branch on [ThorSettings.schemaVersion] here.
+     * Migrations exist here because the defaults declared on [ThorSettings] are
+     * *written into* the stored document — `encodeDefaults` is on below — so a
+     * device that has ever saved its settings carries its own copy of every one
+     * of them. Changing a default in the model reaches a fresh install and
+     * nothing else; anything that has to reach an existing one has to be written
+     * out here.
      */
-    private fun ThorSettings.migrated(): ThorSettings =
-        if (schemaVersion == ThorSettings.CURRENT_SCHEMA_VERSION) {
-            this
-        } else {
-            copy(schemaVersion = ThorSettings.CURRENT_SCHEMA_VERSION)
+    private fun ThorSettings.migrated(): ThorSettings {
+        if (schemaVersion == ThorSettings.CURRENT_SCHEMA_VERSION) return this
+
+        var migrated = this
+
+        /*
+         * 1 → 2: ScreenScraper leads, and the sources it makes redundant stop
+         * being consulted.
+         *
+         * Both maps are replaced outright rather than merged. A stored ordering
+         * predating this can hold retired provider ids, a partial ordering, or
+         * two providers on the same number, and merging a new order into one of
+         * those produces something nobody chose.
+         *
+         * Replacing `enabledProviders` does overrule a choice the user could have
+         * made, and it is worth being plain that it is deliberate rather than a
+         * side effect: which sources a scrape consults is the thing this version
+         * changes, so a migration that left the old set in place would be a
+         * migration that did not happen. It is one switch per provider in
+         * Settings › Metadata to put any of them back, and no provider code has
+         * been removed.
+         */
+        if (schemaVersion < 2) {
+            migrated = migrated.copy(
+                metadata = migrated.metadata.copy(
+                    providerPriority = ThorSettings.DEFAULT.metadata.providerPriority,
+                    enabledProviders = ThorSettings.DEFAULT.metadata.enabledProviders,
+                ),
+            )
         }
+
+        return migrated.copy(schemaVersion = ThorSettings.CURRENT_SCHEMA_VERSION)
+    }
 
     private companion object {
         /**

@@ -23,10 +23,10 @@ import kotlinx.coroutines.withContext
  * Queries every enabled provider and merges the results into one record.
  *
  * The merge is field-by-field rather than "best provider wins wholesale",
- * because no single provider is best at everything: SteamGridDB has the
- * artwork, RAWG has the prose, ScreenScraper has the retro coverage. For each
- * field the winner is the highest-priority provider that actually supplied a
- * value, with two hard rules on top:
+ * because no single provider is best at everything: ScreenScraper answers almost
+ * all of it, SteamGridDB holds the one square image a cell wants, and Wikidata
+ * needs no account at all. For each field the winner is the highest-priority
+ * provider that actually supplied a value, with two hard rules on top:
  *
  *  - a candidate below [MIN_CONFIDENCE] is discarded entirely, so a bad title
  *    match cannot contribute even one field;
@@ -404,7 +404,7 @@ class MetadataAggregator @Inject constructor(
 
     /**
      * Artwork merges per slot rather than per provider, so a game can take its
-     * hero from SteamGridDB and its screenshots from RAWG.
+     * hero from SteamGridDB and its screenshots from ScreenScraper.
      *
      * One cover and at most [ArtworkSet.MAX_SCREENSHOTS] screenshots. Providers
      * will return dozens; beyond a handful nobody looks at them, and each one is
@@ -430,13 +430,13 @@ class MetadataAggregator @Inject constructor(
          * Each slot goes to whoever is best at it, not to whoever ranks highest
          * overall.
          *
-         * A single priority order cannot say this. IGDB has the landscape
-         * artwork — uniform captures with real dimensions to filter on — while
-         * SteamGridDB has the square grid that a cell wants and nobody else
-         * offers. Ranking IGDB above SteamGridDB to get the first would hand it
-         * the descriptions too, and ranking it below gives the panel a banner.
-         * So the preference is per slot, and the general order still decides
-         * everything it is not stated for.
+         * A single priority order cannot say this. ScreenScraper leads and should
+         * win the cover, the backdrop and the screenshots, while the square grid
+         * a cell wants is SteamGridDB's and nobody else holds one. Ranking
+         * ScreenScraper first outright would hand it a slot whose only candidate
+         * on its side is a photograph of a cartridge; ranking it below
+         * SteamGridDB to avoid that would cost it everything it should win. So
+         * the preference is per slot, and the general order decides the rest.
          */
         val forArtwork = ranked.preferring(ARTWORK_PROVIDER)
         val forIcon = ranked.preferring(ICON_PROVIDER)
@@ -481,7 +481,30 @@ class MetadataAggregator @Inject constructor(
                 existing.hero ?: forArtwork.firstNotNullOfOrNull { it.artwork.hero }
             },
             logo = slot(existing.logo, ranked.firstNotNullOfOrNull { it.artwork.logo }),
-            icon = forIcon.firstNotNullOfOrNull { it.artwork.icon } ?: existing.icon,
+            /*
+             * On a full re-scrape the fetched answer wins even when it is *nothing*.
+             *
+             * `?: existing.icon` was the same hole the hero slot had, and it mattered for
+             * the same reason. ScreenScraper used to fill this from `support-2D` — a
+             * photograph of the cartridge or disc — so a library scraped under that rule
+             * is full of grey plastic where the game's cover should be. Now that the
+             * provider returns no icon at all, "keep what is stored when nobody answers"
+             * means those images can never be replaced: no source offers an icon for a
+             * game SteamGridDB has not heard of, so the cartridge stays for good and no
+             * amount of re-scraping moves it.
+             *
+             * Clearing it is the repair, and it is not a loss — an empty icon falls
+             * through to the box art, which is at least a picture of the game.
+             *
+             * A top-up still keeps what is stored; it is not asking to be corrected. A
+             * hand-picked image never reaches here at all, because `FIELD_ARTWORK in
+             * locked` returns above.
+             */
+            icon = if (replaceArtwork) {
+                forIcon.firstNotNullOfOrNull { it.artwork.icon }
+            } else {
+                existing.icon ?: forIcon.firstNotNullOfOrNull { it.artwork.icon }
+            },
             /*
              * Topped up, not replaced and not skipped.
              *
@@ -513,21 +536,20 @@ class MetadataAggregator @Inject constructor(
         /**
          * The providers that carry video.
          *
-         * ScreenScraper ships clips for retro titles; RAWG has them for anything
-         * modern. SteamGridDB is artwork only and Wikidata is facts only — neither
-         * has a video field to read.
+         * ScreenScraper alone, now: it ships clips for retro titles, which is the
+         * library this launcher is for. SteamGridDB is artwork only and Wikidata
+         * is facts only — neither has a video field to read.
          */
-        val TRAILER_PROVIDERS = setOf("screenscraper", "rawg")
+        val TRAILER_PROVIDERS = setOf("screenscraper")
 
         /**
          * Sources whose payloads contain prose rather than facts or artwork only.
          *
-         * ArtScraper carries LaunchBox's overview text, so a launcher configured
-         * with nothing but a companion on the LAN still fills the description
-         * field — which is the difference between "no provider can do this" and
-         * "this game has no write-up".
+         * Wikidata is here as well as ScreenScraper because it needs no account
+         * of any kind: with everything signed out, it is still the difference
+         * between "no provider can do this" and "this game has no write-up".
          */
-        val DESCRIPTION_PROVIDERS = setOf("artscraper", "screenscraper", "rawg", "wikidata", "igdb")
+        val DESCRIPTION_PROVIDERS = setOf("screenscraper", "wikidata")
 
         /**
          * Sources that carry landscape images of a game.
@@ -537,17 +559,22 @@ class MetadataAggregator @Inject constructor(
          * an ultra-wide banner — so a launcher configured with SteamGridDB alone
          * fills every cover and leaves the panel with nothing to show.
          */
-        val SCREENSHOT_PROVIDERS = setOf("artscraper", "screenscraper", "rawg", "igdb")
+        val SCREENSHOT_PROVIDERS = setOf("screenscraper")
 
         /**
          * Sources that know how long a game takes.
          *
-         * IGDB has real submitted play-throughs; RAWG has an average playtime in
-         * whole hours, which is coarser but is the same question. Nothing else
-         * carries the figure — notably not ScreenScraper, which is the one most
-         * likely to be configured.
+         * Empty, and deliberately still asked. IGDB had submitted play-throughs
+         * and RAWG an average in whole hours, and both have been removed — so
+         * nothing the launcher ships carries this figure. Keeping the question
+         * means [hasCompletionProvider] answers false and the sync manager stops
+         * re-scraping games to fill a field that cannot be filled, rather than
+         * asking every provider about it once per game forever.
+         *
+         * A set rather than a `false`, because this is a fact about which sources
+         * are installed and not a decision. Adding one back is adding its id.
          */
-        val COMPLETION_PROVIDERS = setOf("igdb", "rawg")
+        val COMPLETION_PROVIDERS = emptySet<String>()
 
         /**
          * Below this, a title match is more likely to be a different game than
@@ -568,25 +595,11 @@ class MetadataAggregator @Inject constructor(
          * Who owns a slot when they answer at all.
          *
          * Stated rather than derived from the priority order, because the order
-         * is one list and these are three different questions. IGDB has the
-         * landscape artwork, SteamGridDB the square grid a cell wants, and
-         * Wikipedia the prose — and no single ranking puts all three first.
+         * is one list and these are three different questions. ScreenScraper has
+         * the artwork and the prose, SteamGridDB the square grid a cell wants —
+         * and no single ranking puts the right source first for all of them.
          */
-        /*
-         * ArtScraper owns the artwork slots when it answers.
-         *
-         * IGDB held this because it is the only source whose images can be filtered by shape.
-         * ArtScraper does better than filter: it knows which game the file *is*, from its hash,
-         * and returns art already ordered by region against that identification — so its cover
-         * is the right region's cover rather than the right-shaped one. Its fanart is also
-         * genuine wide key art, which is what the top screen wants behind a title.
-         *
-         * A preference, not a requirement: a game it has never heard of still takes IGDB's
-         * screenshots and SteamGridDB's grid exactly as before.
-         */
-        const val ARTWORK_PROVIDER = "artscraper"
-        const val ICON_PROVIDER = "steamgriddb"
-        const val DESCRIPTION_PROVIDER = "wikidata"
+        /* The three slot owners are declared at the foot of this file. */
 
         /**
          * How much synopsis is worth keeping.
@@ -636,8 +649,66 @@ internal fun selectNonBlankMetadataText(
  * A stable sort, so this expresses "ask this one first" rather than reordering
  * anything else: the preferred provider gets first refusal on the slot, and if
  * it has nothing the ranking decides exactly as it did before. Nothing is
- * excluded — a preference is not a requirement, and a game IGDB has never heard
+ * excluded — a preference is not a requirement, and a game the preferred source
+ * has never heard
  * of still gets whatever artwork anybody else found.
  */
 internal fun List<MetadataCandidate>.preferring(providerId: String): List<MetadataCandidate> =
     sortedByDescending { it.providerId == providerId }
+
+/*
+ * ---- Who owns which slot ---------------------------------------------------
+ *
+ * Top level and internal rather than private constants on the companion, so the
+ * test that asserts these route to three different providers can name them. It
+ * used to hold its own copy of the three strings and had already drifted out of
+ * step with them — a mirror that claims a rename will break it loudly, and does
+ * not.
+ */
+
+/*
+ * ScreenScraper owns the artwork slots when it answers.
+ *
+ * It identifies the file by hash and returns art already ordered by region against
+ * that identification, so its cover is the right region's cover rather than merely
+ * the right-shaped one. It also has the deepest catalogue for these systems and a
+ * real `fanart` type, which is what the top screen wants behind a title.
+ *
+ * A preference, not a requirement. SteamGridDB still competes for any slot
+ * ScreenScraper leaves empty, which for a game it has never heard of is all of
+ * them — a cover from somewhere is better than a blank cell.
+ */
+internal const val ARTWORK_PROVIDER = "screenscraper"
+
+/**
+ * The square cell icon, which is SteamGridDB's and only SteamGridDB's.
+ *
+ * The one slot ScreenScraper is not the answer to, and not for want of ranking:
+ * it has no square image that is a picture of the *game*. The closest it holds
+ * is `support-2D`, a scan of the cartridge or disc — 1:1, and a photograph of
+ * grey plastic. A grid of those is a shelf of media rather than a library of
+ * titles, so [ScreenScraperProvider] returns no icon at all now and this
+ * preference has nothing left to outrank.
+ *
+ * SteamGridDB's `grids` endpoint asked at 1:1 returns cover art *composed* for a
+ * square frame, which is the thing being asked for. Its API key is therefore the
+ * one credential that still buys something no other source here can supply; with
+ * no key the slot stays empty and a cell falls through to the box art.
+ */
+internal const val ICON_PROVIDER = "steamgriddb"
+
+/*
+ * The synopsis, now ScreenScraper's as well.
+ *
+ * This was Wikidata's on the grounds that it writes prose about the game rather
+ * than a marketing blurb, which is true and was the right call while ScreenScraper
+ * was ranked below the sources that fill this in. It is the wrong call for a
+ * launcher whose leading source is ScreenScraper: its synopsis is written per
+ * system and per region and describes the game as the platform's audience met it,
+ * where Wikipedia's opening paragraph is as often about the game's development or
+ * its reception.
+ *
+ * Wikidata still fills this in wherever ScreenScraper has no synopsis, which for
+ * anything obscure is often. Both are cut to [DESCRIPTION_MAX_CHARS] on a sentence.
+ */
+internal const val DESCRIPTION_PROVIDER = "screenscraper"

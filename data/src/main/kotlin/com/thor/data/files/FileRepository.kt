@@ -13,6 +13,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -108,10 +111,23 @@ class FileRepository @Inject constructor(
         if (!directory.isDirectory) return@withContext FileListing.Missing
         val children = directory.listFiles() ?: return@withContext FileListing.Unreadable
 
+        /*
+         * Child counts, where they are cheap.
+         *
+         * A folder row is far more useful reading "12 items" than reading nothing,
+         * and the count is one `readdir` per subdirectory. That is free on a folder
+         * of twenty and is emphatically not free on a ROM directory holding four
+         * thousand — so it is done only where the parent is small enough that the
+         * extra pass cannot be felt, and left null everywhere else. Null renders as
+         * no badge at all rather than as "0 items", which would be a wrong answer
+         * rather than an absent one.
+         */
+        val countChildren = children.size <= CHILD_COUNT_LIMIT
+
         val entries = buildList(children.size) {
             children.forEach { child ->
                 coroutineContext.ensureActive()
-                add(child.toEntry())
+                add(child.toEntry(countChildren))
             }
         }
 
@@ -234,8 +250,66 @@ class FileRepository @Inject constructor(
 
         sources.forEach { source ->
             coroutineContext.ensureActive()
+            val sameName = File(target, source.name)
+
+            /*
+             * Pasting something into the folder it already lives in.
+             *
+             * This destroyed the file, and it is worth spelling out because the
+             * shape of it is not obvious: `File(target, source.name)` resolves to
+             * the *source itself*, so the copy opened one stream for reading and
+             * another for writing on the same path. Opening for write truncates,
+             * so the read then found an empty file, reported nought bytes copied
+             * and called it a success — and a move went on to delete what was left.
+             * On a folder it did that to every child before removing the lot. The
+             * hundreds of `MediaProvider: Deleted 1 items` lines in the log were
+             * that, one per file.
+             *
+             * Compared by canonical path so `/sdcard` and `/storage/emulated/0`
+             * are recognised as the same place, which on this device they are.
+             */
+            val sameFile = runCatching {
+                sameName.canonicalPath == source.canonicalPath
+            }.getOrDefault(false)
+
+            if (sameFile && move) {
+                // Already where it was asked to go. Not a failure, and emphatically
+                // not something to copy onto itself first.
+                copied += source.sizeOnDisk()
+                onProgress(copied, total)
+                return@forEach
+            }
+
+            /*
+             * Never write over something already there.
+             *
+             * A paste that silently replaced a file of the same name would be the
+             * one destructive act in this class with no confirmation in front of
+             * it — including the case above, where the "existing file" is the
+             * source. `Name (2)` costs the user a rename at worst; the alternative
+             * costs them the file.
+             */
+            val landing = if (sameName.exists()) sameName.uniqueSibling() else sameName
+
+            /*
+             * A move within one volume is a rename, and a rename is instantaneous.
+             *
+             * The copy-then-delete path below exists because `renameTo` fails
+             * across volumes — internal storage to a card — and returns false
+             * rather than throwing. It does *not* fail within a volume, which is
+             * most moves, and taking the slow path there meant reading and writing
+             * every byte and then deleting the original file by file. Each of
+             * those deletions is also a round trip to MediaProvider, which is what
+             * made moving a large folder take minutes.
+             */
+            if (move && runCatching { source.renameTo(landing) }.getOrDefault(false)) {
+                copied += source.sizeOnDisk()
+                onProgress(copied, total)
+                return@forEach
+            }
+
             val landed = runCatching {
-                source.copyInto(File(target, source.name)) { chunk ->
+                source.copyInto(landing) { chunk ->
                     copied += chunk
                     onProgress(copied, total)
                 }
@@ -261,9 +335,191 @@ class FileRepository @Inject constructor(
         }
     }
 
+    // ---- Archives ----------------------------------------------------------
+
+    /**
+     * Zips [paths] into [archiveName] beside them.
+     *
+     * Zip and only zip. `ZipOutputStream` is in the platform, so this costs no
+     * dependency and works on every device; 7z and rar would each be a library
+     * and a format Android cannot open afterwards without another one.
+     *
+     * Written to a temporary file and renamed on success, so a copy interrupted
+     * half way — the battery, the user, a full card — leaves no half-written
+     * archive sitting in the folder looking like a real one.
+     */
+    suspend fun compress(
+        paths: List<String>,
+        destination: String,
+        archiveName: String,
+        onProgress: (writtenBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+    ): FileResult = withContext(ioDispatcher) {
+        val sources = paths.map(::File).filter(File::exists)
+        if (sources.isEmpty()) return@withContext FileResult.Failed("Nothing left to compress")
+
+        val name = archiveName.sanitized().ifEmpty { "Archive" }
+        val target = File(destination, if (name.endsWith(ZIP, true)) name else "$name$ZIP")
+        if (target.exists()) return@withContext FileResult.Invalid("${target.name} already exists")
+
+        val total = sources.sumOf { it.sizeOnDisk() }
+        var written = 0L
+        val partial = File(destination, "${target.name}$PARTIAL")
+
+        val result = runCatching {
+            ZipOutputStream(partial.outputStream().buffered()).use { zip ->
+                sources.forEach { source ->
+                    // The parent of the *source*, so a folder is stored with its
+                    // own name at the root of the archive rather than with the
+                    // whole path from the volume down.
+                    source.addTo(zip, base = source.parentFile ?: File(destination)) { chunk ->
+                        written += chunk
+                        onProgress(written, total)
+                    }
+                }
+            }
+        }
+
+        result.fold(
+            onSuccess = {
+                if (partial.renameTo(target)) {
+                    FileResult.Done
+                } else {
+                    partial.delete()
+                    FileResult.Failed("Could not finish ${target.name}")
+                }
+            },
+            onFailure = { error ->
+                partial.delete()
+                ThorLog.w(TAG, "Could not compress into ${target.name}: ${error.message}")
+                FileResult.Failed("Could not create ${target.name}")
+            },
+        )
+    }
+
+    /**
+     * Unpacks a zip into a folder of its own, named after the archive.
+     *
+     * Into a folder rather than into the current directory, because an archive of
+     * four hundred loose files emptied where you stood is not something a file
+     * manager should do on one button press and cannot be undone in one either.
+     */
+    suspend fun extract(
+        path: String,
+        onProgress: (readBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+    ): FileResult = withContext(ioDispatcher) {
+        val archive = File(path)
+        if (!archive.isFile) return@withContext FileResult.Failed("${archive.name} is not there")
+        if (!archive.extension.equals("zip", ignoreCase = true)) {
+            return@withContext FileResult.Invalid("Only zip archives can be extracted")
+        }
+
+        val target = File(archive.parentFile, archive.nameWithoutExtension).uniqueSibling()
+        if (!target.mkdirs()) return@withContext FileResult.Failed("Could not create ${target.name}")
+
+        /*
+         * Where an entry is allowed to land, resolved before anything is written.
+         *
+         * A zip entry's name is arbitrary text from whoever built the archive, and
+         * `../../../` in it is a real attack — Zip Slip — that writes outside the
+         * folder being extracted into. Every path is canonicalised and checked
+         * against the destination, and the whole extraction fails rather than
+         * skipping the bad entry: an archive containing one of these is not an
+         * archive to trust the rest of.
+         */
+        val root = target.canonicalFile
+        val total = archive.length().coerceAtLeast(1L)
+        var read = 0L
+
+        val result = runCatching {
+            ZipInputStream(archive.inputStream().buffered()).use { zip ->
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val entry = zip.nextEntry ?: break
+                    val resolved = File(root, entry.name).canonicalFile
+
+                    if (!resolved.path.startsWith(root.path + File.separator) && resolved != root) {
+                        throw SecurityException("Entry escapes the destination: ${entry.name}")
+                    }
+
+                    if (entry.isDirectory) {
+                        resolved.mkdirs()
+                    } else {
+                        resolved.parentFile?.mkdirs()
+                        resolved.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(BUFFER)
+                            while (true) {
+                                coroutineContext.ensureActive()
+                                val count = zip.read(buffer)
+                                if (count <= 0) break
+                                output.write(buffer, 0, count)
+                                read += count
+                                onProgress(read.coerceAtMost(total), total)
+                            }
+                        }
+                    }
+                    zip.closeEntry()
+                }
+            }
+        }
+
+        result.fold(
+            onSuccess = { FileResult.Done },
+            onFailure = { error ->
+                target.deleteRecursively()
+                ThorLog.w(TAG, "Could not extract ${archive.name}: ${error.message}")
+                when (error) {
+                    is SecurityException ->
+                        FileResult.Failed("${archive.name} tries to write outside its folder")
+
+                    else -> FileResult.Failed("Could not extract ${archive.name}")
+                }
+            },
+        )
+    }
+
+    /** Adds a file or a whole tree to an open archive, reporting each chunk. */
+    private suspend fun File.addTo(zip: ZipOutputStream, base: File, onChunk: (Long) -> Unit) {
+        coroutineContext.ensureActive()
+        val relative = toRelativeString(base).replace(File.separatorChar, '/')
+
+        if (isDirectory) {
+            // A trailing slash is how a zip records an entry as a directory, which
+            // is what keeps an empty folder in the archive at all.
+            zip.putNextEntry(ZipEntry("$relative/"))
+            zip.closeEntry()
+            listFiles()?.forEach { it.addTo(zip, base, onChunk) }
+            return
+        }
+
+        zip.putNextEntry(ZipEntry(relative))
+        inputStream().buffered().use { input ->
+            val buffer = ByteArray(BUFFER)
+            while (true) {
+                coroutineContext.ensureActive()
+                val count = input.read(buffer)
+                if (count <= 0) break
+                zip.write(buffer, 0, count)
+                onChunk(count.toLong())
+            }
+        }
+        zip.closeEntry()
+    }
+
+    /** `Name`, then `Name (2)`, so extracting twice does not merge into the first. */
+    private fun File.uniqueSibling(): File {
+        if (!exists()) return this
+        var attempt = 2
+        while (attempt < MAX_NAME_ATTEMPTS) {
+            val candidate = File(parentFile, "$name ($attempt)")
+            if (!candidate.exists()) return candidate
+            attempt++
+        }
+        return this
+    }
+
     // ---- Plumbing ----------------------------------------------------------
 
-    private fun File.toEntry() = FileEntry(
+    private fun File.toEntry(countChildren: Boolean = false) = FileEntry(
         path = absolutePath,
         name = name,
         isDirectory = isDirectory,
@@ -273,6 +529,7 @@ class FileRepository @Inject constructor(
         modifiedEpochMs = lastModified(),
         isHidden = name.startsWith('.'),
         canWrite = canWrite(),
+        childCount = if (countChildren && isDirectory) list()?.size else null,
     )
 
     /** Total bytes underneath, for a progress denominator. */
@@ -318,8 +575,27 @@ class FileRepository @Inject constructor(
     private companion object {
         const val TAG = "Files"
         const val ROOT = "/storage"
-        const val BUFFER = 64 * 1024
+        /**
+         * Sixteen times the old 64 KB.
+         *
+         * Every chunk is a read syscall, a write syscall and a progress
+         * callback, and on a gigabyte the old size made sixteen thousand
+         * of each. Storage on this device reads far faster than that in
+         * bulk, so the buffer was the thing setting the pace.
+         */
+        const val BUFFER = 1024 * 1024
         const val MAX_NAME = 255
+
+        /** Above this, counting each subfolder's contents stops being free. */
+        const val CHILD_COUNT_LIMIT = 250
+
+        const val ZIP = ".zip"
+
+        /** Suffix on a half-written archive, so it cannot be mistaken for a real one. */
+        const val PARTIAL = ".part"
+
+        /** A bound on the `Name (2)`, `Name (3)` search; past this something is wrong. */
+        const val MAX_NAME_ATTEMPTS = 100
 
         /** Reserved on the filesystems Android mounts, FAT included. */
         val ILLEGAL_NAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')

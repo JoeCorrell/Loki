@@ -98,7 +98,6 @@ fun SettingsScreen(
     val artworkOnlyProviders by viewModel.artworkOnlyProviders.collectAsStateWithLifecycle()
     val noScreenshotProvider by viewModel.noScreenshotProvider.collectAsStateWithLifecycle()
     val screenScraperKeyMissing by viewModel.screenScraperKeyMissing.collectAsStateWithLifecycle()
-    val discoveringArtScraper by viewModel.discoveringArtScraper.collectAsStateWithLifecycle()
     val keyCaptureEnabled by viewModel.keyCaptureEnabled.collectAsStateWithLifecycle()
     val capturedKeys by viewModel.capturedKeys.collectAsStateWithLifecycle()
     val isDefaultLauncher by viewModel.isDefaultLauncher.collectAsStateWithLifecycle()
@@ -418,7 +417,6 @@ fun SettingsScreen(
                                 artworkOnlyProviders = artworkOnlyProviders,
                                 noScreenshotProvider = noScreenshotProvider,
                                 screenScraperKeyMissing = screenScraperKeyMissing,
-                                discoveringArtScraper = discoveringArtScraper,
                                 keyCaptureEnabled = keyCaptureEnabled,
                                 capturedKeys = capturedKeys,
                                 isDefaultLauncher = isDefaultLauncher,

@@ -6,10 +6,11 @@ import org.junit.Test
 /**
  * Which provider owns which slot.
  *
- * A single priority order cannot express it: IGDB has the landscape artwork,
- * SteamGridDB the square grid a cell wants, and Wikipedia the prose. Ranking
- * IGDB high enough to win the artwork hands it the descriptions too; ranking it
- * below SteamGridDB gives the panel a banner instead of a screenshot.
+ * A single priority order cannot express it. ScreenScraper leads and takes the
+ * artwork and the synopsis, but the square grid a cell wants is SteamGridDB's
+ * and nobody else has one — ranking ScreenScraper high enough to win everything
+ * would hand it a slot it has no asset for, and ranking it below SteamGridDB to
+ * avoid that would cost it the two it should win.
  */
 class ProviderPreferenceTest {
 
@@ -57,21 +58,47 @@ class ProviderPreferenceTest {
             .isEqualTo(withoutIgdb.map { it.providerId })
     }
 
+    /**
+     * The slots route where the aggregator says, not where this test says.
+     *
+     * Named against the real constants rather than a copy of the three strings.
+     * This held its own copy and had already drifted a full provider out of
+     * step with them — which is the failure mode of a mirror that claims a
+     * rename will break it loudly and cannot.
+     */
     @Test
-    fun `the three slots route to three different providers`() {
-        // The whole point: one ordering could not have done this.
-        assertThat(ranked.preferring(MetadataAggregatorFields.ARTWORK).first().providerId)
-            .isEqualTo("igdb")
-        assertThat(ranked.preferring(MetadataAggregatorFields.ICON).first().providerId)
-            .isEqualTo("steamgriddb")
-        assertThat(ranked.preferring(MetadataAggregatorFields.DESCRIPTION).first().providerId)
-            .isEqualTo("wikidata")
-    }
-}
+    fun `artwork and prose go to ScreenScraper, the square icon to SteamGridDB`() {
+        assertThat(ranked.preferring(ARTWORK_PROVIDER).first().providerId)
+            .isEqualTo("screenscraper")
+        assertThat(ranked.preferring(DESCRIPTION_PROVIDER).first().providerId)
+            .isEqualTo("screenscraper")
 
-/** Mirrors the aggregator's private constants, so a rename breaks this loudly. */
-private object MetadataAggregatorFields {
-    const val ARTWORK = "igdb"
-    const val ICON = "steamgriddb"
-    const val DESCRIPTION = "wikidata"
+        // The one slot that does not follow the leading provider, because it is
+        // the one asset ScreenScraper does not have.
+        assertThat(ranked.preferring(ICON_PROVIDER).first().providerId)
+            .isEqualTo("steamgriddb")
+    }
+
+    /**
+     * Every provider the launcher ships is ordered, and only those.
+     *
+     * An id here that names no provider is a priority for something that cannot
+     * be bound; a provider missing from the map sorts to `Int.MAX_VALUE`, behind
+     * everything, which is never what anyone meant.
+     */
+    @Test
+    fun `the priority map names exactly the providers that exist`() {
+        val priorities = com.thor.core.model.ThorSettings.DEFAULT.metadata.providerPriority
+
+        assertThat(priorities.keys)
+            .containsExactly("screenscraper", "steamgriddb", "wikidata")
+        assertThat(priorities["screenscraper"]).isEqualTo(0)
+    }
+
+    @Test
+    fun `the default scrape consults ScreenScraper first and drops the redundant sources`() {
+        val enabled = com.thor.core.model.ThorSettings.DEFAULT.metadata.enabledProviders
+
+        assertThat(enabled).containsExactly("screenscraper", "steamgriddb", "wikidata")
+    }
 }

@@ -347,6 +347,30 @@
         </service>
 
         <!--
+          Hands a file the explorer is looking at to whichever app opens it.
+
+          A `file://` URI is refused outright from Android 7 onwards, and the
+          refusal — `FileUriExposedException` — is thrown at the *sender*, so
+          without this the failure would look like the launcher crashing rather
+          than like the other app declining. `grantUriPermissions` is what makes
+          the read flag on the intent mean anything.
+
+          `exported` is false and that is not a contradiction: a content
+          provider with `grantUriPermissions` hands out access one URI at a
+          time, to one app, for as long as that intent lives. Exporting it would
+          publish the whole of storage to anything that asked.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!--
           The metadata scraper and library scanner run as WorkManager jobs; the
           default initializer is left in place and Hilt supplies the factory
           through ThorApplication.

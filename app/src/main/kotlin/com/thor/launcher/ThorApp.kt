@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
@@ -82,6 +83,7 @@ import com.thor.launcher.capture.RecordingGeometry
 import com.thor.launcher.mouse.PointerHost
 import kotlinx.coroutines.flow.drop
 import com.thor.data.capture.RecordingState
+import com.thor.data.sync.ScrapeState
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
@@ -135,6 +137,11 @@ import com.thor.core.model.LauncherTab
 import com.thor.feature.home.menu.SideMenuAction
 import com.thor.feature.home.shell.ShortcutPanel
 import com.thor.feature.home.dialog.SortDialog
+import com.thor.feature.files.FileBrowserActions
+import com.thor.feature.files.FileBrowserScreen
+import com.thor.feature.files.FileActionPanel
+import com.thor.feature.files.FilesOutcome
+import com.thor.feature.files.FilesViewModel
 import com.thor.feature.search.SearchScreen
 import com.thor.feature.search.SearchViewModel
 import com.thor.feature.settings.SettingsCategory
@@ -160,7 +167,7 @@ import com.thor.feature.topscreen.TopScreen
  * the grid panel beside the reader. A tour that was an overlay could not do that,
  * because it would be the thing occupying the surface it needs to show.
  */
-private enum class Overlay { NONE, SETTINGS, SEARCH, PERMISSIONS }
+private enum class Overlay { NONE, SETTINGS, SEARCH, PERMISSIONS, FILES }
 
 /**
  * The shell's surfaces named as the focus rule names them.
@@ -224,6 +231,17 @@ fun ThorApp(
     // Hoisted so controller input can drive the results list; the search screen
     // would otherwise own a separate instance that input could not reach.
     val searchViewModel: SearchViewModel = hiltViewModel()
+
+    /*
+     * The file explorer, hoisted for a second reason as well.
+     *
+     * Input is the usual one. The other is that this state is drawn on both
+     * panels at once — the listing on the grid, the description of whatever the
+     * cursor is on beside it — and those are separate windows. One holder,
+     * collected inside each panel, is what makes them the same cursor rather than
+     * two that have to be kept in step.
+     */
+    val filesViewModel: FilesViewModel = hiltViewModel()
 
     val displays by displayMonitor.displays.collectAsState(
         initial = displayMonitor.snapshot(),
@@ -693,7 +711,22 @@ fun ThorApp(
      * that had been displaced sent every button to a window the user could not see.
      */
     val overlaySurfaceNow: () -> InputSurface = {
-        if (infoWindowFreeNow()) InputSurface.TOP else InputSurface.BOTTOM
+        when {
+            /*
+             * The explorer spans both panels and its cursor lives on the top one.
+             *
+             * The listing is the thing being driven — up, down, open, back — and
+             * it is drawn on the reading screen; the panel below describes what
+             * the cursor landed on and carries the buttons. Both are reachable
+             * from the pad without changing which surface holds it, because the
+             * explorer routes its own presses between its panes (see
+             * `FilesPane`), so the controller stays pointed at the listing and Y
+             * walks it down to the buttons.
+             */
+            overlay == Overlay.FILES -> InputSurface.TOP
+            infoWindowFreeNow() -> InputSurface.TOP
+            else -> InputSurface.BOTTOM
+        }
     }
 
     val activeSurfaceNow: () -> InputSurface = {
@@ -754,6 +787,23 @@ fun ThorApp(
      * separately, because it is an overlay in every sense that matters here — it
      * appears, it wants the controller, and it is on a known surface.
      */
+    /*
+     * The explorer reads the disk when it is opened, and every time it is opened.
+     *
+     * Hoisted here rather than sitting in either panel, and that placement is the
+     * whole of it: the explorer draws on both screens, and in compact mode only
+     * one of the two is composed at all — so an effect living in a panel either
+     * fires twice or, on the panel that is not drawn, never. Nothing listed and a
+     * permanent "Reading…" is what never looks like.
+     *
+     * Re-run on each open rather than once, because all-files access is granted
+     * in an Android screen the launcher is not on. Coming back here is the only
+     * moment the answer can have changed.
+     */
+    LaunchedEffect(overlay) {
+        if (overlay == Overlay.FILES) filesViewModel.onShown()
+    }
+
     val openOverlay: Any? = when {
         state.editingEntry != null -> EDITOR_OVERLAY_KEY
         overlay != Overlay.NONE -> overlay
@@ -1208,6 +1258,51 @@ fun ThorApp(
                 }
 
                 /*
+                 * The file explorer, which drives itself.
+                 *
+                 * Handled here rather than in the overlay routing at the foot of
+                 * this collector, and that is the same trap the walkthrough fell
+                 * into: `target` below collapses to `Overlay.NONE` whenever the
+                 * *grid* is the active surface, and the explorer's list is drawn on
+                 * the grid — so every press would have fallen through to the
+                 * launcher and launched whatever the cursor was sitting on behind
+                 * it.
+                 *
+                 * Two buttons are let past. Home means home from anywhere, and the
+                 * AYN button has to reach the shortcut panel from anywhere, which is
+                 * the point of it. Everything else is the explorer's, including Back
+                 * — it unwinds marks, then the rail, then the directory tree, and
+                 * says so by returning CLOSE only once there is nothing left to
+                 * unwind.
+                 */
+                if (overlay == Overlay.FILES) {
+                    when (event.command) {
+                        ControllerCommand.GO_HOME -> {
+                            overlay = Overlay.NONE
+                            viewModel.goHome()
+                            feedback.play(FeedbackCue.HOME)
+                        }
+
+                        ControllerCommand.OPEN_SHORTCUTS -> {
+                            overlay = Overlay.NONE
+                            touchedSurface = InputSurface.BOTTOM
+                            viewModel.onCommand(event.command, event.accelerated)
+                            feedback.play(FeedbackCue.MENU_OPEN)
+                        }
+
+                        else -> {
+                            val outcome = filesViewModel.onCommand(
+                                command = event.command,
+                                accelerated = event.accelerated,
+                            )
+                            if (outcome == FilesOutcome.CLOSE) overlay = Overlay.NONE
+                            feedback.play(outcome.toCue())
+                        }
+                    }
+                    return@collect
+                }
+
+                /*
                  * The Movies section drives itself while it is open.
                  *
                  * Offered the press before the grid, because the section occupies
@@ -1336,6 +1431,9 @@ fun ThorApp(
                      * inherit that bug in silence; this way the compiler asks.
                      */
                     Overlay.PERMISSIONS -> Unit
+
+                    /** Never reached either; see the branch above the keyboard's. */
+                    Overlay.FILES -> Unit
 
                     Overlay.SETTINGS -> {
                         if (couchModeNow.value && (
@@ -1621,7 +1719,24 @@ fun ThorApp(
             }
         }
 
-        /** The couch opening, for the one screen that mode has. */
+        /**
+         * A scrape in progress, said on the panel that is being read.
+         *
+         * Collected inside the lambda rather than once at the top of the shell,
+         * so it is collected in whichever window is drawing — a value collected
+         * in the activity's composition stops updating while that activity is
+         * stopped, which on this device is exactly when the other panel is the
+         * one on screen. Same reason the Movies player's status is collected
+         * where it is drawn.
+         */
+        val scrapeBadge: @Composable BoxScope.() -> Unit = {
+            val scrape by settingsViewModel.scrapeState.collectAsState()
+            (scrape as? ScrapeState.Running)?.let { running ->
+                ScrapeBadge(running, modifier = Modifier.align(Alignment.BottomEnd))
+            }
+        }
+
+    /** The couch opening, for the one screen that mode has. */
         val couchIntroOverlay: @Composable () -> Unit = {
             if (couchIntroRunning.value) {
                 ThorIntro(
@@ -1745,6 +1860,16 @@ fun ThorApp(
                 when (action) {
                     SideMenuAction.APPS -> viewModel.openAppDrawer()
 
+                    /*
+                     * The explorer, on the panel the user is holding.
+                     *
+                     * Unlike Settings this does not need a category selected
+                     * first — it re-reads whatever directory it was left in, so
+                     * coming back to it finds it where it was rather than at the
+                     * top of storage again. See [FilesViewModel.onShown].
+                     */
+                    SideMenuAction.FILES -> overlay = Overlay.FILES
+
                     // Sorts the grid in place rather than opening settings —
                     // "Sort" that took you to a settings page was doing the one
                     // thing it should not.
@@ -1763,7 +1888,7 @@ fun ThorApp(
                 // cue for what it actually opened rather than a generic confirm.
                 feedback.play(
                     when (action) {
-                        SideMenuAction.APPS -> FeedbackCue.DRAWER_OPEN
+                        SideMenuAction.APPS, SideMenuAction.FILES -> FeedbackCue.DRAWER_OPEN
                         SideMenuAction.SETTINGS -> FeedbackCue.SETTINGS_OPEN
                         SideMenuAction.NEW -> FeedbackCue.SUCCESS
                         SideMenuAction.SORT, SideMenuAction.GRID -> FeedbackCue.MENU_OPEN
@@ -2126,6 +2251,36 @@ fun ThorApp(
                         // panel the user is holding rather than on the one they read.
                         Overlay.PERMISSIONS -> Unit
 
+                        /*
+                         * The explorer's other half: what the cursor is standing on.
+                         *
+                         * Only where this surface has a panel of its own. When an app
+                         * has taken it — or in couch mode, where there is one screen
+                         * — this lambda is composed over the grid, and drawing the
+                         * description on top of the list it describes would cover the
+                         * thing being described. The browser folds it in as a column
+                         * of its own in that case; see `showDetails` below.
+                         *
+                         * The state is collected *here*, inside whichever window is
+                         * drawing, rather than once at the top of the shell. A value
+                         * collected in the activity's composition stops being
+                         * recomputed while that activity is stopped, which on this
+                         * device is precisely while the other panel is the one on
+                         * screen — see the note beside `activeSurfaceNow`.
+                         */
+                        Overlay.FILES -> {
+                            val filesState by filesViewModel.state.collectAsState()
+                            FileBrowserScreen(
+                                state = filesState,
+                                actions = filesActions(filesViewModel) { overlay = Overlay.NONE },
+                                // Only one panel to work with, so the description
+                                // and the buttons fold in underneath the listing.
+                                compact = !infoWindowFreeNow() ||
+                                    mode == DualScreenMode.COUCH,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
                         Overlay.NONE -> Unit
                     }
                 }
@@ -2203,6 +2358,7 @@ fun ThorApp(
                         onItemSelected = moviesSection::pickTitle,
                     )
                     infoOverlays()
+                    scrapeBadge()
                     if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(true)
                     return@Box
                 }
@@ -2223,6 +2379,7 @@ fun ThorApp(
                         modifier = Modifier.fillMaxSize(),
                     )
                     infoOverlays()
+                    scrapeBadge()
                     if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(true)
                     return@Box
                 }
@@ -2269,6 +2426,7 @@ fun ThorApp(
                     statusActions = shellStatusActions,
                 )
                 infoOverlays()
+                scrapeBadge()
 
                 // Only where this surface has a panel of its own. In the split and
                 // single-screen modes both surfaces share one window, and two intros
@@ -2580,6 +2738,43 @@ fun ThorApp(
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+
+            /*
+             * ---- The file explorer -------------------------------------------
+             *
+             * The browsing half, on the panel the user is holding. Its description
+             * pane is on the other screen — see `infoOverlays` — which is what
+             * leaves this one able to spend its whole height on rows instead of
+             * losing half of them to a details column.
+             *
+             * Placed under the keyboard and the shortcut panel below, both of which
+             * have to be able to draw over it: renaming a file raises the keyboard,
+             * and the AYN button has to reach the launcher from anywhere.
+             */
+            /*
+             * The file explorer's acting half, on the panel being held.
+             *
+             * Its listing is on the other screen — see `infoOverlays` — which is
+             * what leaves that one able to spend its whole height on rows. Drawn
+             * only where the listing has a panel of its own; when an app has taken
+             * it, or in couch mode, the browser folds this in underneath itself
+             * and drawing it twice would put two copies of the same buttons on one
+             * screen.
+             *
+             * Placed under the keyboard and the shortcut panel below, both of
+             * which have to draw over it: renaming raises the keyboard, and the
+             * AYN button has to reach the launcher from anywhere.
+             */
+            if (overlay == Overlay.FILES && infoWindowFreeNow() && mode != DualScreenMode.COUCH) {
+                // In this panel's own composition; see the note in `infoOverlays`.
+                val filesState by filesViewModel.state.collectAsState()
+
+                FileActionPanel(
+                    state = filesState,
+                    actions = filesActions(filesViewModel) { overlay = Overlay.NONE },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             /*
              * The keyboard, over everything else on this panel.
@@ -3306,6 +3501,63 @@ private fun RecordingBadge(modifier: Modifier = Modifier) {
 }
 
 /**
+ * A scrape running somewhere the user is no longer looking.
+ *
+ * A library pass takes minutes and is started from a settings page nobody stays
+ * on — so leaving that page left it running with nothing anywhere to say so, and
+ * artwork quietly appearing on the grid was the only evidence. Worse, the obvious
+ * conclusion from a silent launcher is that it stopped, which invites starting it
+ * again on top of itself.
+ *
+ * Counted rather than merely lit. "Scraping" answers whether it is working;
+ * "412 of 3,908" answers the question actually being asked, which is whether it
+ * is worth waiting for.
+ */
+@Composable
+private fun ScrapeBadge(state: ScrapeState.Running, modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+
+    // The same slow blink the recording badge uses, for the same reason: a solid
+    // dot on a static panel reads as a dead pixel rather than as activity.
+    val transition = rememberInfiniteTransition(label = "scrape")
+    val alpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "scrapeAlpha",
+    )
+
+    Row(
+        modifier = modifier
+            .padding(10.dp)
+            .clip(ThorTheme.shapes.pill)
+            .background(colors.scrim)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(colors.cursor.copy(alpha = alpha)),
+        )
+        Text(
+            text = if (state.total > 0) {
+                "Scraping ${state.done} of ${state.total}"
+            } else {
+                "Scraping"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurface,
+        )
+    }
+}
+
+/**
  * Resolves the user's preference against the hardware actually present.
  *
  * @param hasExternal whether a monitor is attached, which [DualScreenMode.AUTO]
@@ -3405,6 +3657,58 @@ private fun ControllerCommand.toCue(): FeedbackCue = when (this) {
     ControllerCommand.OPEN_APP_DRAWER -> FeedbackCue.DRAWER_OPEN
 
     else -> FeedbackCue.NAVIGATE
+}
+
+/**
+ * Everything the file explorer's two panels can ask for.
+ *
+ * Built once here and handed to both, rather than assembled at each call site.
+ * The two panels are one interface — the listing on the reading screen, the
+ * description and the buttons on the one being held — and two separately written
+ * bundles of the same fifteen callbacks would be two things to keep in step, with
+ * a wired-up button on one screen and a dead one on the other as the failure.
+ *
+ * Not remembered: every entry is a method reference on a view model that outlives
+ * both panels, so there is nothing here that recomposition would save allocating.
+ */
+private fun filesActions(
+    viewModel: FilesViewModel,
+    onClose: () -> Unit,
+): FileBrowserActions = FileBrowserActions(
+    onFocusEntry = viewModel::focusEntry,
+    onOpenEntry = viewModel::openEntry,
+    onToggleMark = viewModel::toggleMark,
+    onFocusShortcut = viewModel::focusShortcut,
+    onOpenShortcut = viewModel::openShortcut,
+    onOpenCrumb = viewModel::openCrumb,
+    onFocusAction = viewModel::focusAction,
+    onActionColumnsChanged = viewModel::setActionColumns,
+    onActionLayoutChanged = viewModel::setActionLayout,
+    onPerformAction = viewModel::performAction,
+    onPromptTextChanged = viewModel::setPromptText,
+    onPromptFocusConfirm = viewModel::focusPromptConfirm,
+    onPromptCommitted = viewModel::commitPrompt,
+    onPromptDismissed = viewModel::dismissPrompt,
+    onGrantAccess = viewModel::requestStorageAccess,
+    onClose = onClose,
+)
+
+/**
+ * The explorer's own answer to a press.
+ *
+ * Mapped from what it *did* rather than from the button, because the explorer is
+ * the one surface where the same button means several things: Back unwinds marks,
+ * then the rail, then the tree, and only then closes. A cue chosen from the
+ * command could not tell those apart, and a wrong cue on a file manager is
+ * actively misleading — the sound for "that did nothing" is how a user finds out
+ * they are at the top of the tree.
+ */
+private fun FilesOutcome.toCue(): FeedbackCue = when (this) {
+    FilesOutcome.MOVED -> FeedbackCue.NAVIGATE
+    FilesOutcome.ACTED -> FeedbackCue.CONFIRM
+    FilesOutcome.OPENED -> FeedbackCue.LAUNCH
+    FilesOutcome.BACK, FilesOutcome.CLOSE -> FeedbackCue.BACK
+    FilesOutcome.REJECTED -> FeedbackCue.REJECT
 }
 
 /** Mark arrival, uninterrupted slow loader, ready hold, and final reveal. */

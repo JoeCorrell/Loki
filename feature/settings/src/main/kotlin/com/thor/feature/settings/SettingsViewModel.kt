@@ -64,8 +64,6 @@ import com.thor.data.launcher.EntryLauncher
 import com.thor.data.media.DebridStatus
 import com.thor.data.media.AddonCheck
 import com.thor.data.media.MediaRepository
-import com.thor.data.metadata.ArtScraperDiscovery
-import com.thor.data.metadata.ArtScraperProvider
 import com.thor.data.metadata.MetadataCandidate
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
@@ -158,7 +156,6 @@ class SettingsViewModel @Inject constructor(
     private val achievementRepository: AchievementRepository,
     private val achievementSyncManager: AchievementSyncManager,
     private val retroAchievements: RetroAchievementsClient,
-    private val artScraperDiscovery: ArtScraperDiscovery,
     private val backupManager: BackupManager,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
@@ -1616,66 +1613,11 @@ class SettingsViewModel @Inject constructor(
     fun setScreenScraperPassword(value: String) =
         updateScreenScraper { it.copy(screenScraperPassword = value) }
 
-    // Trimmed on the way in: both are copied out of a web console, and a pasted
-    // trailing space turns a correct credential into a rejected one.
-    fun setIgdbClientId(value: String) =
-        updateScreenScraper { it.copy(igdbClientId = value.trim()) }
-
-    fun setIgdbClientSecret(value: String) =
-        updateScreenScraper { it.copy(igdbClientSecret = value.trim()) }
-
-
 
     private fun updateScreenScraper(transform: (MetadataSettings) -> MetadataSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateMetadata(transform) }
     }
 
-    fun setArtScraperHost(value: String) =
-        updateScreenScraper { it.copy(artScraperHost = value.trim()) }
-
-    /**
-     * Looks for an ArtScraper companion on this network and connects to it.
-     *
-     * Saves the address itself rather than presenting a list, because in practice there is one
-     * PC and asking which of one is theirs is a question with no content. When more than one
-     * answers, the one with its metadata database imported wins — that is the difference
-     * between a companion that can fill a description and one that cannot, and it is not a
-     * distinction anybody should have to know to make.
-     *
-     * The result is reported through the same status map as every other provider, so a hit and
-     * a miss are both visible where the user is already looking.
-     */
-    fun discoverArtScraper() {
-        if (_discoveringArtScraper.value) return
-        viewModelScope.launchSafely(TAG) {
-            _discoveringArtScraper.value = true
-            try {
-                val hosts = artScraperDiscovery.discover()
-                val best = hosts.sortedByDescending { it.hasLaunchBox }.firstOrNull()
-
-                if (best == null) {
-                    _providerStatus.value = _providerStatus.value +
-                        (ArtScraperProvider.ID to ProviderStatus.Unreachable(
-                            "Nothing answered. Is 'artscraper serve' running on the same network?",
-                        ))
-                    return@launchSafely
-                }
-
-                settingsRepository.updateMetadata { it.copy(artScraperHost = best.hostAndPort) }
-
-                // Probe rather than assume. A beacon reply proves the PC is there; it does not
-                // prove the HTTP port is reachable, and a firewall commonly allows one and not
-                // the other.
-                _providerStatus.value = _providerStatus.value + aggregator.checkConnections()
-                    .filterKeys { it == ArtScraperProvider.ID }
-            } finally {
-                _discoveringArtScraper.value = false
-            }
-        }
-    }
-
-    private val _discoveringArtScraper = MutableStateFlow(false)
-    val discoveringArtScraper: StateFlow<Boolean> = _discoveringArtScraper.asStateFlow()
 
     fun addPlatform(platformId: String) {
         viewModelScope.launchSafely(TAG) {

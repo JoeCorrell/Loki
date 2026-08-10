@@ -52,7 +52,6 @@ import com.thor.feature.topscreen.panel.GameDetailPanel
 import com.thor.feature.topscreen.panel.IdleWallpaperPanel
 import com.thor.feature.topscreen.panel.platformAccentBrush
 import com.thor.feature.topscreen.panel.PlatformDetailPanel
-import com.thor.feature.topscreen.panel.representativeImageFor
 import kotlinx.coroutines.delay
 
 /**
@@ -362,16 +361,23 @@ private fun Backdrop(
         }
 
         /*
-         * A platform folder with no pack installed falls back to one of that
-         * system's landmark games, if the user owns one.
+         * A platform folder's backdrop comes from the platform, or from nowhere.
          *
-         * Only to a landmark, and never to just any game in the folder — see
-         * `representativeImageFor`. When none is owned this lands on the wallpaper,
-         * which says nothing about the system but at least does not claim to.
+         * It used to fall back to one of the system's landmark games when no pack
+         * was installed, on the reasoning that a picture of a famous SNES game
+         * says "SNES". In practice it says the name of that game: the panel is
+         * titled "Super Nintendo" and backed by somebody else's cover, which
+         * reads as the launcher having picked the wrong image rather than as an
+         * illustration — and on a library whose games have square icons scraped
+         * for them, it is a square icon stretched across a widescreen panel.
+         *
+         * The two sources left are the two the user controls: the hero from an
+         * installed icon pack, and an image they chose themselves. With neither,
+         * this lands on the wallpaper, which says nothing about the system but
+         * does not claim to.
          */
         is FolderEntry -> platform?.artwork?.heroUri
             ?: selection.artworkUri
-            ?: platform?.let { representativeImageFor(it.id, folderChildren) }
 
         else -> platform?.artwork?.heroUri
     } ?: wallpaperUri

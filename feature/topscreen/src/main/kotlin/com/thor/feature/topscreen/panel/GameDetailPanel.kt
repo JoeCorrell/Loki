@@ -260,8 +260,21 @@ private fun GameProfileCard(
 private fun GameMasthead(game: GameEntry, platform: Platform?, accent: Color) {
     val colors = ThorTheme.colors
     val artwork = game.metadata.artwork
-    val cover = artwork.boxArt ?: artwork.icon
-    val coverAspectRatio = if (artwork.boxArt != null) 2f / 3f else 1f
+    /*
+     * The square icon first, and the box scan only where there is none.
+     *
+     * These were the other way round, so the masthead was almost always a 2:3
+     * cover — a tall rectangle standing beside a title and a paragraph, taking
+     * height the text wanted and leaving the panel lopsided. The 1:1 grid art is
+     * composed for a square frame and reads as the game's mark rather than as a
+     * photograph of its packaging, which is what a header wants.
+     *
+     * The ratio follows whichever was actually chosen rather than being decided
+     * separately, so a game with only a box scan still gets a portrait frame and
+     * is not squashed into a square one.
+     */
+    val cover = artwork.icon ?: artwork.boxArt
+    val coverAspectRatio = if (artwork.icon != null) 1f else 2f / 3f
     val creditLine = listOfNotNull(
         game.metadata.developer?.takeIf(String::isNotBlank),
         game.metadata.publisher?.takeIf(String::isNotBlank),

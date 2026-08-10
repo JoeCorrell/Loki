@@ -139,13 +139,23 @@ fun FolderDetailPanel(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall)) {
                     items(recent, key = GameEntry::id) { game ->
+                        val artwork = game.metadata.artwork
                         ArtworkImage(
-                            model = game.metadata.artwork.cellImage,
+                            model = artwork.cellImage,
                             contentDescription = game.title,
                             fallbackText = game.title,
                             modifier = Modifier
                                 .height(110.dp)
-                                .aspectRatio(3f / 4f)
+                                /*
+                                 * The frame follows the picture, rather than the
+                                 * picture being cropped to a frame.
+                                 *
+                                 * `cellImage` is the square grid image where there
+                                 * is one and the box scan where there is not, and
+                                 * this held both in a fixed 3:4 — so a 1:1 icon was
+                                 * cropped top and bottom to fit a portrait slot.
+                                 */
+                                .aspectRatio(if (artwork.icon != null) 1f else 3f / 4f)
                                 .clip(RoundedCornerShape(dimens.cornerRadiusSmall)),
                         )
                     }

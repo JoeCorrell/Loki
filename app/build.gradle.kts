@@ -48,6 +48,7 @@ dependencies {
     implementation(projects.feature.topscreen)
     implementation(projects.feature.settings)
     implementation(projects.feature.search)
+    implementation(projects.feature.files)
     implementation(projects.feature.movies)
     implementation(projects.feature.stream)
 

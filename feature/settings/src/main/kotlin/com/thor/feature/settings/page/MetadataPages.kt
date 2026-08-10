@@ -22,7 +22,6 @@ internal fun MetadataPage(
     artworkOnly: Boolean,
     noScreenshots: Boolean,
     screenScraperKeyMissing: Boolean,
-    discoveringArtScraper: Boolean,
 ) {
     val metadata = settings.metadata
 
@@ -95,14 +94,14 @@ internal fun MetadataPage(
     )
 
     // Artwork arriving while every text field stays blank looks like a broken
-    // scraper. It is usually just SteamGridDB being the only configured provider,
+    // scraper. It is usually just SteamGridDB being the only enabled provider,
     // and SteamGridDB serves artwork only — so say which providers supply text.
     if (artworkOnly) {
         RowDivider()
         InfoRow(
             "No description source",
-            "Enable Wikidata for key-free Wikipedia descriptions, or add a RAWG key " +
-                "for RAWG descriptions and credits.",
+            "Turn ScreenScraper on for titles, credits and synopses, or Wikidata " +
+                "for Wikipedia descriptions with no account needed.",
         )
     }
 
@@ -114,8 +113,8 @@ internal fun MetadataPage(
         InfoRow(
             "No screenshot source",
             "SteamGridDB has covers, banners and logos but no widescreen images. " +
-                "Add IGDB credentials, a RAWG key, or a ScreenScraper account " +
-                "below — without one of those the game panel has nothing to show.",
+                "ScreenScraper is the source of them — turn it on below, and the " +
+                "game panel has something to show.",
         )
     }
 
@@ -123,10 +122,7 @@ internal fun MetadataPage(
         RowDivider()
         SwitchRow(
             title = provider.second,
-            subtitle = when {
-                provider.first !in IMPLEMENTED_PROVIDERS -> "Not yet implemented"
-                else -> providerStatus[provider.first].describe()
-            },
+            subtitle = providerStatus[provider.first].describe(),
             checked = provider.first in metadata.enabledProviders,
             focused = focusedRow == PROVIDER_FIRST_ROW + index,
             onCheckedChange = { on ->
@@ -143,33 +139,6 @@ internal fun MetadataPage(
         )
     }
 
-    /*
-     * The companion's address, and the button that finds it.
-     *
-     * First of the credential rows because it is the only one that is not a credential: a PC on
-     * the same network running `artscraper serve`, which needs no account anywhere and is the
-     * one source here that can put a cover on a cell before anything else is filled in.
-     */
-    RowDivider()
-    ActionRow(
-        title = "Find ArtScraper on my network",
-        subtitle = "Run 'artscraper serve' on your PC, then press this. " +
-            "Identifies games by their ROM's hash, so the artwork is the right game's.",
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size,
-        trailingLabel = if (discoveringArtScraper) "Looking…" else "Find",
-        onClick = viewModel::discoverArtScraper,
-    )
-    RowDivider()
-    TextFieldRow(
-        title = "ArtScraper address",
-        subtitle = "Filled in by the button above. Type it yourself if your PC is on " +
-            "another subnet.",
-        value = metadata.artScraperHost,
-        placeholder = "192.168.1.20:8756",
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 1,
-        onValueChange = viewModel::setArtScraperHost,
-    )
-
     RowDivider()
     TextFieldRow(
         title = "SteamGridDB key",
@@ -177,22 +146,8 @@ internal fun MetadataPage(
         value = metadata.apiKeys[PROVIDER_STEAMGRIDDB].orEmpty(),
         placeholder = "API key",
         isSecret = true,
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 2,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size,
         onValueChange = { viewModel.setApiKey(PROVIDER_STEAMGRIDDB, it) },
-    )
-    RowDivider()
-    TextFieldRow(
-        title = "RAWG key",
-        // Screenshots named first, deliberately. With no ScreenScraper developer
-        // key in the build this is the only source of a widescreen image the
-        // game panel can show, and a row describing it as prose reads as
-        // optional to somebody looking at an empty panel.
-        subtitle = "Screenshots, descriptions and credits. From rawg.io/apidocs",
-        value = metadata.apiKeys[PROVIDER_RAWG].orEmpty(),
-        placeholder = "API key",
-        isSecret = true,
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 3,
-        onValueChange = { viewModel.setApiKey(PROVIDER_RAWG, it) },
     )
     RowDivider()
     TextFieldRow(
@@ -206,7 +161,7 @@ internal fun MetadataPage(
         },
         value = metadata.screenScraperUser,
         placeholder = "Username",
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 4,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 1,
         onValueChange = viewModel::setScreenScraperUser,
     )
     RowDivider()
@@ -215,29 +170,8 @@ internal fun MetadataPage(
         value = metadata.screenScraperPassword,
         placeholder = "Password",
         isSecret = true,
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 5,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 2,
         onValueChange = viewModel::setScreenScraperPassword,
-    )
-    RowDivider()
-    TextFieldRow(
-        title = "IGDB client ID",
-        // Named for where they come from rather than what they are: the pair is
-        // issued by Twitch, and somebody hunting for an "IGDB key" on igdb.com
-        // will not find one.
-        subtitle = "Screenshots at a fixed 16:9. From the Twitch developer console",
-        value = metadata.igdbClientId,
-        placeholder = "Client ID",
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 6,
-        onValueChange = viewModel::setIgdbClientId,
-    )
-    RowDivider()
-    TextFieldRow(
-        title = "IGDB client secret",
-        value = metadata.igdbClientSecret,
-        placeholder = "Client secret",
-        isSecret = true,
-        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 7,
-        onValueChange = viewModel::setIgdbClientSecret,
     )
 }
 
@@ -251,30 +185,27 @@ internal fun MetadataPage(
  */
 internal const val PROVIDER_FIRST_ROW = 5
 
-private const val PROVIDER_ARTSCRAPER = "artscraper"
 private const val PROVIDER_STEAMGRIDDB = "steamgriddb"
-private const val PROVIDER_RAWG = "rawg"
-private const val PROVIDER_IGDB = "igdb"
 
+/**
+ * The sources a scrape can consult, in the order they are asked.
+ *
+ * Three, and each is here for something the other two cannot do. ScreenScraper
+ * identifies a ROM by its hash and answers the whole question — title, credits,
+ * date, genre, synopsis, artwork. SteamGridDB has the square grid image a cell
+ * wants and nobody else holds one. Wikidata needs no account at all, so it is
+ * what answers when nothing has been signed in to.
+ *
+ * Three sources were removed to get here. Each covered something ScreenScraper
+ * could not while it was ranked below them, and every one of them cost a network
+ * round trip per game per scrape — a source that agrees with the one above it is
+ * time and quota spent to be ignored, and a switch for it is a decision put in
+ * front of the reader with no answer behind it.
+ */
 internal val PROVIDERS = listOf(
-    // First because it outranks the rest, and because it is the one that works with nothing
-    // signed up for anywhere.
-    PROVIDER_ARTSCRAPER to "ArtScraper (your PC)",
+    "screenscraper" to "ScreenScraper",
     PROVIDER_STEAMGRIDDB to "SteamGridDB",
     "wikidata" to "Wikidata",
-    PROVIDER_RAWG to "RAWG",
-    PROVIDER_IGDB to "IGDB",
-    "screenscraper" to "ScreenScraper",
-)
-
-/** Providers with a working client; the rest are listed but inert. */
-private val IMPLEMENTED_PROVIDERS = setOf(
-    PROVIDER_ARTSCRAPER,
-    PROVIDER_STEAMGRIDDB,
-    "wikidata",
-    PROVIDER_RAWG,
-    PROVIDER_IGDB,
-    "screenscraper",
 )
 
 /** Human-readable form of a provider probe result. */

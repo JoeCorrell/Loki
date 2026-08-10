@@ -1,10 +1,7 @@
 package com.thor.data.di
 
 import android.content.Context
-import com.thor.data.metadata.ArtScraperProvider
-import com.thor.data.metadata.IgdbProvider
 import com.thor.data.metadata.MetadataProvider
-import com.thor.data.metadata.RawgProvider
 import com.thor.data.metadata.ScreenScraperProvider
 import com.thor.data.metadata.SteamGridDbProvider
 import com.thor.data.metadata.WikidataProvider
@@ -62,36 +59,27 @@ object NetworkModule {
 @InstallIn(SingletonComponent::class)
 interface MetadataProviderModule {
 
-    @Binds
-    @IntoSet
-    fun bindsSteamGridDb(provider: SteamGridDbProvider): MetadataProvider
-
-    @Binds
-    @IntoSet
-    fun bindsRawg(provider: RawgProvider): MetadataProvider
-
-    @Binds
-    @IntoSet
-    fun bindsIgdb(provider: IgdbProvider): MetadataProvider
-
+    /**
+     * The leading source: hash-matched, and the only one that answers the whole
+     * question rather than a corner of it.
+     */
     @Binds
     @IntoSet
     fun bindsScreenScraper(provider: ScreenScraperProvider): MetadataProvider
 
     /**
-     * Keyless, so it is the only textual provider that contributes on a fresh
-     * install -- every other one needs a credential first.
+     * The square cell icon, which nothing else here holds -- ScreenScraper's
+     * nearest square image is a photograph of the cartridge. See ICON_PROVIDER.
+     */
+    @Binds
+    @IntoSet
+    fun bindsSteamGridDb(provider: SteamGridDbProvider): MetadataProvider
+
+    /**
+     * Keyless, so it is the only provider that contributes with nothing signed
+     * in to anywhere.
      */
     @Binds
     @IntoSet
     fun bindsWikidata(provider: WikidataProvider): MetadataProvider
-
-    /**
-     * A companion the user runs on their own PC, addressed rather than
-     * credentialled -- and the only source here that can supply artwork without
-     * one, which is what makes it the answer on a fresh install.
-     */
-    @Binds
-    @IntoSet
-    fun bindsArtScraper(provider: ArtScraperProvider): MetadataProvider
 }
