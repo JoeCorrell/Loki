@@ -78,6 +78,24 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Reading ROM directories granted through the storage access framework. -->
+    <!--
+      Whole-device storage, for the built-in file explorer.
+
+      The narrower doors do not reach far enough for a file manager. Scoped
+      storage caps READ_EXTERNAL_STORAGE at media, and SAF only ever sees the
+      folders a user has granted one at a time — fine for picking a ROM
+      directory, useless for browsing a device. Copying between two arbitrary
+      folders, renaming in place, or looking at what is actually on the card all
+      need real paths.
+
+      It is a special permission: declaring it is not being granted it. The user
+      goes to Android's "All files access" screen and turns it on, and until they
+      do the explorer says so rather than showing an empty device. Play Store
+      distribution would need a justification for this; a launcher you sideload
+      onto a handheld does not.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
