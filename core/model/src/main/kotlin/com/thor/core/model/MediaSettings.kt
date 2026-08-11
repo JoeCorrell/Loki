@@ -57,6 +57,17 @@ data class MediaSettings(
     val debridService: DebridService = DebridService.REAL_DEBRID,
 
     /**
+     * The viewer's Trakt account.
+     *
+     * Its own block rather than another token beside the debrid ones, because it
+     * answers a different question. A debrid service turns a source into a
+     * stream; Trakt does not touch the stream at all — it is a record of what
+     * this person has watched, keyed to them rather than to the launcher, and
+     * shared with every other player they use.
+     */
+    val trakt: TraktSettings = TraktSettings(),
+
+    /**
      * Torrent indexers, searched by THOR itself.
      *
      * The built-in path: THOR speaks Torznab directly, so searching, parsing,

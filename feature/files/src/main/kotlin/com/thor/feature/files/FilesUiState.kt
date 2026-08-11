@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.thor.core.model.Breadcrumb
 import com.thor.core.model.FileEntry
 import com.thor.core.model.FileSort
+import com.thor.core.model.parentPathOf
 import com.thor.data.files.FileShortcut
 import com.thor.data.files.VolumeSpace
 
@@ -118,7 +119,7 @@ data class FilesUiState(
              * there are rarely more than a handful of those.
              */
             if (marked.isEmpty()) return 0
-            return marked.count { it.substringBeforeLast('/', "") != path }
+            return marked.count { parentPathOf(it) != path }
         }
 
     val focusedShortcut: FileShortcut? get() = shortcuts.getOrNull(shortcutCursor)
@@ -156,7 +157,18 @@ data class FilesUiState(
     val deepestShortcutPath: String?
         get() = shortcuts
             .map(FileShortcut::path)
-            .filter { path == it || path.startsWith("$it/") }
+            .filter { shortcut ->
+                /*
+                 * A share's path already ends in a slash.
+                 *
+                 * `smb://tower/` is written that way everywhere — jcifs will not
+                 * enumerate a directory without it — so appending another produced
+                 * `smb://tower//`, which matches nothing. The rail simply never lit
+                 * while the user was inside a share.
+                 */
+                val prefix = if (shortcut.endsWith('/')) shortcut else "$shortcut/"
+                path == shortcut || path.startsWith(prefix)
+            }
             .maxByOrNull(String::length)
 
     /** True while something is happening that the user must not act on top of. */

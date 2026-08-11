@@ -191,6 +191,21 @@ enum class SettingsPage(
         "Which source is chosen, and how it plays",
     ),
 
+    /**
+     * Trakt, on its own page rather than among the accounts.
+     *
+     * Sources & accounts is about what turns a title into a stream — a debrid
+     * service, indexers, addons. Trakt touches none of that: it is a record of
+     * what has been watched, and it is the only thing in the section that is
+     * about the *viewer* rather than about the files. It also needs a page of its
+     * own for a practical reason — signing in shows a code and waits, which is
+     * not something to do halfway down a list of other people's API keys.
+     */
+    MOVIES_TRAKT(
+        SettingsCategory.MOVIES, "Trakt",
+        "Sync what you watch, and your watchlist",
+    ),
+
     // ---- PC streaming ------------------------------------------------------
     STREAM_QUALITY(
         SettingsCategory.STREAMING, "Picture",
@@ -275,6 +290,19 @@ enum class SettingsPage(
     BACKUP(
         SettingsCategory.SYSTEM, "Backup",
         "Save this profile to a file, or restore one",
+        group = "Data & features",
+    ),
+
+    /**
+     * Servers the file explorer can reach, under System rather than Library.
+     *
+     * A share is somewhere the *device* can read, not somewhere games come from —
+     * the explorer browses it and the scanner does not. Filing it beside Backup is
+     * the honest grouping: both are about data that lives off this device.
+     */
+    NETWORK_SHARES(
+        SettingsCategory.SYSTEM, "Network shares",
+        "Browse a NAS or a PC's shared folders",
         group = "Data & features",
     ),
 

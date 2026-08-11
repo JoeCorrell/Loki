@@ -16,6 +16,11 @@ import com.thor.core.model.FileEntry
 import com.thor.core.model.FileKind
 import com.thor.core.model.FileSort
 import com.thor.core.model.breadcrumbs
+import com.thor.core.model.childPathOf
+import com.thor.core.model.fileNameOf
+import com.thor.core.model.isRemotePath
+import com.thor.core.model.parentPathOf
+import com.thor.core.model.siblingPath
 import com.thor.core.model.sortFiles
 import com.thor.data.files.FileListing
 import com.thor.data.files.FileRepository
@@ -90,14 +95,25 @@ class FilesViewModel @Inject constructor(
         _state.update { it.copy(pane = FilesPane.LISTING, prompt = null, message = null) }
 
         viewModelScope.launch {
+            /*
+             * The rail is rebuilt every time, not only on the first open.
+             *
+             * It used to be read once and then only if it had come back empty,
+             * which was fine while it listed volumes — those do not appear while
+             * the launcher is running. Network shares do: they are added in
+             * Settings, which is somewhere the user goes *and comes back from*,
+             * and a rail that only refreshed on a cold start would leave a server
+             * they had just set up invisible until the launcher was restarted.
+             *
+             * It costs a settings read and a directory scan of `/storage`, both of
+             * which are already paid for on the way in.
+             */
+            _state.update { it.copy(shortcuts = repository.shortcuts()) }
+
             if (!started) {
                 started = true
-                _state.update { it.copy(shortcuts = repository.shortcuts()) }
                 navigateTo(repository.defaultDirectory())
             } else {
-                if (_state.value.shortcuts.isEmpty()) {
-                    _state.update { it.copy(shortcuts = repository.shortcuts()) }
-                }
                 reload()
             }
         }
@@ -187,6 +203,19 @@ class FilesViewModel @Inject constructor(
                     status = FilesStatus.Problem("Android will not let this folder be read"),
                 )
             }
+
+            /*
+             * A share that did not answer, carrying the server's own reason.
+             *
+             * Kept distinct from [FileListing.Unreadable] all the way to the
+             * screen because the next step differs: a permission problem is fixed
+             * in Android's settings, and this one is fixed by waking the NAS,
+             * joining the right network, or correcting a password. Flattening
+             * both into "cannot read" would send the user to the wrong place.
+             */
+            is FileListing.Offline -> _state.update {
+                it.copy(entries = emptyList(), status = FilesStatus.Problem(listing.reason))
+            }
         }
     }
 
@@ -204,8 +233,7 @@ class FilesViewModel @Inject constructor(
         if (isEmpty()) return this
         val here = listing.mapTo(HashSet(), FileEntry::path)
         return filterTo(LinkedHashSet()) { marked ->
-            val parent = File(marked).parent
-            parent != path || marked in here
+            parentPathOf(marked) != path || marked in here
         }
     }
 
@@ -609,9 +637,9 @@ class FilesViewModel @Inject constructor(
                                 // take the folder's, which is the only name that
                                 // describes all of them.
                                 name = if (targets.size == 1) {
-                                    File(targets.first()).nameWithoutExtension
+                                    fileNameOf(targets.first()).substringBeforeLast('.')
                                 } else {
-                                    File(current.path).name.ifEmpty { "Archive" }
+                                    fileNameOf(current.path).ifEmpty { "Archive" }
                                 },
                             ),
                         )
@@ -850,8 +878,8 @@ class FilesViewModel @Inject constructor(
             // The renamed file, so the cursor follows it rather than staying on
             // whatever has taken its old position in the ordering.
             val follow = when (prompt) {
-                is FilesPrompt.Rename -> File(File(prompt.path).parent, prompt.name).absolutePath
-                is FilesPrompt.NewFolder -> File(_state.value.path, prompt.name).absolutePath
+                is FilesPrompt.Rename -> siblingPath(prompt.path, prompt.name)
+                is FilesPrompt.NewFolder -> childPathOf(_state.value.path, prompt.name)
                 is FilesPrompt.ConfirmDelete, is FilesPrompt.Compress -> null
             }
             reload(keepCursorOn = follow)
@@ -906,6 +934,25 @@ class FilesViewModel @Inject constructor(
      */
     private fun openExternally(entry: FileEntry): FilesOutcome {
         if (entry.isDirectory) return FilesOutcome.REJECTED
+
+        /*
+         * A file on a share cannot be handed to another app.
+         *
+         * A `FileProvider` URI is built from a real path on this device, and there
+         * is none — the bytes are on a server. Android has no general way to lend
+         * another application a stream the launcher is holding open over SMB, so
+         * the honest answer is to say what to do instead rather than to fail with
+         * a provider error nobody can act on.
+         */
+        if (isRemotePath(entry.path)) {
+            _state.update {
+                it.copy(
+                    message = "Copy ${entry.name} to this device first — " +
+                        "other apps cannot read a network share",
+                )
+            }
+            return FilesOutcome.REJECTED
+        }
 
         val uri = runCatching {
             FileProvider.getUriForFile(

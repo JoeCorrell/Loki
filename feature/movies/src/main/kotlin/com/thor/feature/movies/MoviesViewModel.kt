@@ -13,7 +13,10 @@ import com.thor.core.model.Season
 import com.thor.core.model.SourceRanking
 import com.thor.core.model.StreamSource
 import com.thor.core.model.WatchProgress
+import com.thor.core.common.dispatchers.ApplicationScope
 import com.thor.data.media.MediaRepository
+import com.thor.data.media.TraktScrobble
+import kotlinx.coroutines.CoroutineScope
 import com.thor.data.media.ResolvedStream
 import com.thor.data.media.SourceResult
 import com.thor.data.media.WatchProgressRepository
@@ -214,6 +217,16 @@ class MoviesViewModel @Inject constructor(
      * down or paused. Anything either of them owned would take the film with it.
      */
     val player: ThorPlayer,
+    /**
+     * Outlives this view model, and has to for one call.
+     *
+     * The scrobble that marks a title watched is sent as the player closes,
+     * which is very often the same moment the section is left — and a coroutine
+     * in `viewModelScope` is cancelled by exactly that. Every other write here
+     * is fine to lose on the way out; this one is the whole point of connecting
+     * an account.
+     */
+    @ApplicationScope private val applicationScope: CoroutineScope,
 ) : ViewModel() {
 
     /** What the player is doing, read by both panels. */
@@ -244,6 +257,15 @@ class MoviesViewModel @Inject constructor(
     private var playerWasEnded = false
 
     /**
+     * Whether Trakt has been told this play started.
+     *
+     * Per play rather than per session, and reset with the other two below
+     * when a new title is opened — otherwise the second episode of an evening
+     * is never announced, and Trakt shows the viewer still watching the first.
+     */
+    private var scrobbleStarted = false
+
+    /**
      * Holds the playing series in the detail panel between stopping one episode
      * and resolving the next. Continue-watching cleanup can otherwise remap the
      * browse cursor during that gap and replace the item the source search uses.
@@ -252,6 +274,15 @@ class MoviesViewModel @Inject constructor(
 
     /** The catalogue rows, before the continue-watching shelf is put in front. */
     private val catalogueRows = MutableStateFlow<List<MediaRow>>(emptyList())
+
+    /**
+     * The viewer's own shelves, held apart from the catalogue's.
+     *
+     * Its own flow so the two can arrive independently — see the note where it
+     * is filled. Cleared with the catalogue when the tab changes, because a
+     * watchlist of films is not a watchlist of series.
+     */
+    private val traktShelves = MutableStateFlow<List<MediaRow>>(emptyList())
 
     /** Kept separate so filtering the dynamic shelf reacts before a catalogue fetch ends. */
     private val selectedMediaType = MutableStateFlow(MediaType.MOVIE)
@@ -307,16 +338,31 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launchSafely(TAG) {
             combine(
                 catalogueRows,
+                traktShelves,
                 watchProgress.observeContinueWatching(),
                 selectedMediaType,
-            ) { rows, continueRow, type ->
+            ) { rows, personal, continueRow, type ->
                 val matchingIndexes = continueRow.items.indices
                     .filter { continueRow.items[it].id.type == type }
                 val filteredContinue = continueRow.copy(
                     items = matchingIndexes.map(continueRow.items::get),
                     progress = matchingIndexes.map(continueRow::progressAt),
                 )
-                if (filteredContinue.items.isEmpty()) rows else listOf(filteredContinue) + rows
+                /*
+                 * This device's resume shelf, then Trakt's, then the catalogue.
+                 *
+                 * The local one leads because it is the more precise answer: it
+                 * knows the exact millisecond the viewer stopped, where Trakt
+                 * knows a percentage reported by whichever player last touched
+                 * the title. Trakt's sits underneath because it is the one that
+                 * can hold what was started somewhere else entirely.
+                 */
+                val head = if (filteredContinue.items.isEmpty()) {
+                    emptyList()
+                } else {
+                    listOf(filteredContinue)
+                }
+                head + personal + rows
             }.collect { rows ->
                 val previous = _uiState.value
                 _uiState.update { state ->
@@ -358,6 +404,7 @@ class MoviesViewModel @Inject constructor(
         searchJob?.cancel()
         // Never display the previous media type while its replacement is loading.
         catalogueRows.value = emptyList()
+        traktShelves.value = emptyList()
         _uiState.update {
             it.copy(
                 type = type,
@@ -392,6 +439,26 @@ class MoviesViewModel @Inject constructor(
             // A slower previous tab request must not replace the active tab.
             if (selectedMediaType.value != type) return@launchSafely
             catalogueRows.value = rows
+
+            /*
+             * Trakt's own shelves, fetched after the catalogue rather than with it.
+             *
+             * The catalogue is the section; Trakt is a personal layer over it. If
+             * the two were awaited together, a signed-in viewer whose account
+             * service was slow, rate-limited or briefly unreachable would open a
+             * screen that showed nothing at all — the shelves everybody gets held
+             * up by the shelves only they have. This way the catalogue paints and
+             * the personal rows land on top of it a moment later.
+             *
+             * Silent when there is no account: `traktRows` answers with an empty
+             * list, and an empty list adds no shelf.
+             */
+            val personal = repository.traktRows(type)
+            if (selectedMediaType.value != type || personal.isEmpty()) return@launchSafely
+            // In front of the catalogue: a watchlist is a list of things the
+            // viewer has already decided they want, which outranks anything a
+            // catalogue is suggesting to them.
+            traktShelves.value = personal
             _uiState.update {
                 it.copy(
                     loading = false,
@@ -809,6 +876,7 @@ class MoviesViewModel @Inject constructor(
                     // A new title gets its own write cadence and ended edge.
                     lastProgressWriteAt = 0L
                     playerWasEnded = false
+                    scrobbleStarted = false
                     _playback.value = Playback(
                         url = resolved.url,
                         item = item,
@@ -923,6 +991,19 @@ class MoviesViewModel @Inject constructor(
         val status = playerStatus.value
         if (_playback.value != null && status.durationMs > 0L) {
             onProgress(status.positionMs, status.durationMs, force = true)
+            /*
+             * The call that marks a title watched.
+             *
+             * Sent before `_playback` is cleared, because the scrobble is built
+             * from what is playing — reading it afterwards would find null and
+             * report nothing. Trakt counts a stop past roughly eighty percent as
+             * finished, so this is the one request in the whole integration whose
+             * loss the viewer would actually notice.
+             */
+            if (scrobbleStarted) {
+                scrobble(TraktScrobble.STOP, status.positionMs, status.durationMs)
+                scrobbleStarted = false
+            }
         }
         _playback.value = null
         player.close()
@@ -998,6 +1079,47 @@ class MoviesViewModel @Inject constructor(
                 durationMs = durationMs,
                 nowEpochMs = now,
             )
+        }
+
+        /*
+         * Trakt is told once, here, rather than when the stream was opened.
+         *
+         * A scrobble carries how far through the title the viewer is, and at the
+         * moment playback is requested nothing knows the duration yet — so a
+         * start sent then reports zero, and a film resumed at the halfway mark
+         * tells Trakt it has just been started from the beginning. The first
+         * progress tick is the earliest point the percentage is true.
+         *
+         * Start and stop only. Trakt's scrobble endpoints are a state machine
+         * and it rate-limits a client that treats them as a progress feed; the
+         * stop is the one that matters anyway, because that is what decides
+         * whether the title counts as watched.
+         */
+        if (!scrobbleStarted) {
+            scrobbleStarted = true
+            scrobble(TraktScrobble.START, positionMs, durationMs)
+        }
+    }
+
+    /**
+     * Reports a play to Trakt, if an account is connected and scrobbling is on.
+     *
+     * Fire and forget, in the application scope rather than the view model's:
+     * a stop is sent as the player closes, which is very often the same moment
+     * the section is left — and a coroutine in `viewModelScope` is cancelled by
+     * exactly that, losing the one call that marks the title watched.
+     */
+    private fun scrobble(action: TraktScrobble, positionMs: Long, durationMs: Long) {
+        val playing = _playback.value ?: return
+        if (durationMs <= 0L) return
+
+        val percent = (positionMs.toFloat() / durationMs * 100f).coerceIn(0f, 100f)
+        val id = playing.item.id
+        val season = playing.seasonNumber
+        val episode = playing.episodeNumber
+
+        applicationScope.launchSafely(TAG) {
+            repository.scrobble(action, id, season, episode, percent)
         }
     }
 

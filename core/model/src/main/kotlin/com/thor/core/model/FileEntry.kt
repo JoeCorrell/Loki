@@ -159,6 +159,8 @@ fun sortFiles(
  * rather than a string operation performed again at the call site.
  */
 fun breadcrumbs(path: String, rootLabel: String = "Storage"): List<Breadcrumb> {
+    if (isRemotePath(path)) return remoteBreadcrumbs(path)
+
     val trimmed = path.trim('/')
     if (trimmed.isEmpty()) return listOf(Breadcrumb(rootLabel, "/"))
 
@@ -171,7 +173,73 @@ fun breadcrumbs(path: String, rootLabel: String = "Storage"): List<Breadcrumb> {
     return crumbs
 }
 
+/**
+ * Crumbs for a share, where the first two segments are not folders.
+ *
+ * `smb://tower/games/snes` is a *server*, a *share* and then a directory, and
+ * the header has to be able to say so — walking up from `snes` reaches the list
+ * of shares on `tower`, which is a real place with a real listing rather than a
+ * prefix of a string. Splitting the generic path builder's way would produce a
+ * crumb for `smb:` and one for an empty segment, both of them dead.
+ *
+ * Every crumb keeps its trailing slash, because jcifs only treats a path as a
+ * directory when it has one.
+ */
+private fun remoteBreadcrumbs(path: String): List<Breadcrumb> {
+    val body = path.removePrefix(SMB_SCHEME).trim('/')
+    if (body.isEmpty()) return emptyList()
+
+    val segments = body.split('/').filter(String::isNotEmpty)
+    val crumbs = mutableListOf<Breadcrumb>()
+    val builder = StringBuilder(SMB_SCHEME)
+
+    segments.forEach { segment ->
+        builder.append(segment).append('/')
+        crumbs += Breadcrumb(label = segment, path = builder.toString())
+    }
+    return crumbs
+}
+
 data class Breadcrumb(val label: String, val path: String)
+
+/**
+ * The folder [path] lives in, spelled the way the explorer spells folders.
+ *
+ * Its own function because the explorer used `java.io.File` for this, and on
+ * `smb://tower/games/rom.iso` that produces `smb:/tower/games` — one slash short,
+ * matching nothing. The mark set is keyed on exactly this comparison, so getting
+ * it wrong means a file ticked on a share is silently counted as being somewhere
+ * else, and every action that reports "3 elsewhere" reports it about files that
+ * are in plain view.
+ *
+ * A directory's parent keeps the trailing slash on a remote path, because that is
+ * how a remote directory is written everywhere else — see `SmbFileSource`.
+ */
+fun parentPathOf(path: String): String {
+    if (!isRemotePath(path)) return path.substringBeforeLast('/', "")
+
+    val body = path.removePrefix(SMB_SCHEME).trim('/')
+    val segments = body.split('/').filter(String::isNotEmpty)
+    if (segments.size <= 1) return ""
+    return SMB_SCHEME + segments.dropLast(1).joinToString("/") + "/"
+}
+
+/** The last segment of [path], with no trailing separator. */
+fun fileNameOf(path: String): String = path.trimEnd('/').substringAfterLast('/')
+
+/** [path]'s neighbour, named [newName]. Used to follow the cursor after a rename. */
+fun siblingPath(path: String, newName: String): String {
+    val parent = parentPathOf(path)
+    return when {
+        parent.isEmpty() -> newName
+        parent.endsWith('/') -> "$parent$newName"
+        else -> "$parent/$newName"
+    }
+}
+
+/** [child] inside [parent], joined the way that parent's storage spells a path. */
+fun childPathOf(parent: String, child: String): String =
+    if (parent.endsWith('/')) "$parent$child" else "$parent/$child"
 
 /**
  * A size in the units somebody reading a list wants.

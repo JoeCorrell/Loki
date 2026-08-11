@@ -2,6 +2,7 @@ package com.thor.feature.files
 
 import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.FileEntry
+import com.thor.data.files.FileShortcut
 import org.junit.Test
 
 /**
@@ -236,5 +237,52 @@ class FilesUiStateTest {
         val restored = restoreCursor(remaining, wantedPath = null, previousIndex = 7)
 
         assertThat(restored).isEqualTo(0)
+    }
+
+    // ---- Which rail entry is lit -------------------------------------------
+
+    private val rail = listOf(
+        FileShortcut("Internal storage", "/storage/emulated/0"),
+        FileShortcut("Downloads", "/storage/emulated/0/Download"),
+        FileShortcut("Tower", "smb://tower/", remote = true),
+    )
+
+    /**
+     * Every path under internal storage also begins with internal storage, so a
+     * plain prefix test lights two rows for a question that has one answer.
+     */
+    @Test
+    fun `the deepest matching shortcut wins`() {
+        val state = FilesUiState(path = "/storage/emulated/0/Download/roms", shortcuts = rail)
+
+        assertThat(state.deepestShortcutPath).isEqualTo("/storage/emulated/0/Download")
+    }
+
+    /**
+     * A share's path already ends in a slash, and appending another produced
+     * `smb://tower//` — which matched nothing, so the rail never lit inside a
+     * share at all.
+     */
+    @Test
+    fun `a folder on a share lights its server`() {
+        val state = FilesUiState(path = "smb://tower/games/snes/", shortcuts = rail)
+
+        assertThat(state.deepestShortcutPath).isEqualTo("smb://tower/")
+    }
+
+    /** And standing on the server's own root lights it too. */
+    @Test
+    fun `a share root lights its own row`() {
+        val state = FilesUiState(path = "smb://tower/", shortcuts = rail)
+
+        assertThat(state.deepestShortcutPath).isEqualTo("smb://tower/")
+    }
+
+    /** A different server is not this one, however alike the two names look. */
+    @Test
+    fun `another server does not light this one`() {
+        val state = FilesUiState(path = "smb://tower-two/games/", shortcuts = rail)
+
+        assertThat(state.deepestShortcutPath).isNull()
     }
 }

@@ -24,10 +24,13 @@ class ArchiveTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
-    // The context is held for a FileProvider authority these paths never touch;
-    // the dispatcher is what the work actually runs on.
+    // A real local source; the SMB one claims only `smb://` paths and so is never
+    // consulted by anything here.
     private val repository = FileRepository(
-        appContext = mockk(relaxed = true),
+        local = LocalFileSource(),
+        remote = SmbFileSource { emptyList() },
+        // Never called: nothing here scans a network.
+        discovery = mockk(relaxed = true),
         ioDispatcher = Dispatchers.Unconfined,
     )
 

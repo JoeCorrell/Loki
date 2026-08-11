@@ -48,6 +48,17 @@ data class ThorSettings(
      */
     val iconPacks: List<IconPack> = emptyList(),
     /**
+     * Network shares the file explorer can browse.
+     *
+     * Top level for the same reason [iconPacks] is: this is a record of what the
+     * user set up rather than a preference with a sensible default, and losing it
+     * loses the passwords with it. It is not inside [LibrarySettings] because a
+     * share is not a place games are scanned from — the explorer browses it, and
+     * whether the scanner ever learns to is a separate question with its own
+     * answer.
+     */
+    val smbServers: List<SmbServer> = emptyList(),
+    /**
      * Whether the walkthrough has been seen.
      *
      * Top level rather than inside a settings group for the same reason

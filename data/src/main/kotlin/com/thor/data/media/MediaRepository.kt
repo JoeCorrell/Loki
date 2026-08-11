@@ -62,6 +62,7 @@ class MediaRepository @Inject constructor(
      */
     private val torznab: TorznabProvider,
     private val addons: StremioAddonProvider,
+    private val trakt: TraktClient,
     private val settings: SettingsRepository,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
@@ -115,6 +116,106 @@ class MediaRepository @Inject constructor(
             }
         }
     }
+
+    /**
+     * The viewer's own shelves, from Trakt.
+     *
+     * Separate from [browseRows] rather than folded into it, and the reason is
+     * what happens when Trakt is slow: the catalogue rows are the section, and
+     * making them wait on an account service that may be signed out, rate
+     * limited or simply unreachable would mean a browse screen that opens at the
+     * speed of the least important thing on it. The caller asks for both and
+     * shows whichever arrives.
+     *
+     * Trakt answers with identities and no artwork — it stopped serving images
+     * years ago — so every id is hydrated through the same catalogue that draws
+     * the rows beside it. That is why these look like ordinary shelves rather
+     * than a list of titles in a different style.
+     */
+    suspend fun traktRows(type: MediaType): List<MediaRow> = withContext(ioDispatcher) {
+        if (!settings.current().media.trakt.showRows) return@withContext emptyList()
+
+        coroutineScope {
+            val resuming = async { trakt.inProgress(type) }
+            val watchlist = async { trakt.watchlist(type) }
+
+            buildList {
+                /*
+                 * Resume first, and it is the shelf worth connecting an account
+                 * for: it holds the episode started on a television last night,
+                 * which this device has never seen and its own continue-watching
+                 * row therefore cannot know about.
+                 */
+                val inProgress = resuming.await()
+                if (inProgress.isNotEmpty()) {
+                    val items = hydrate(inProgress.map(TraktResume::id))
+                    if (items.isNotEmpty()) {
+                        add(
+                            MediaRow(
+                                id = "trakt:progress",
+                                title = "Continue on Trakt",
+                                items = items,
+                                // Stills rather than posters: these are
+                                // resumptions, and a frame from the thing you
+                                // were watching reads as "carry on" where a
+                                // poster reads as "start this".
+                                landscape = true,
+                            ),
+                        )
+                    }
+                }
+
+                val saved = hydrate(watchlist.await())
+                if (saved.isNotEmpty()) {
+                    add(MediaRow(id = "trakt:watchlist", title = "Your watchlist", items = saved))
+                }
+            }
+        }
+    }
+
+    /**
+     * Artwork and metadata for a list of ids, fetched together and in order.
+     *
+     * Concurrent because a watchlist is dozens of titles and one request each in
+     * sequence is a shelf that arrives a title at a time. Ordered afterwards by
+     * the ids given, because a watchlist is in the order the viewer built it and
+     * `awaitAll` returning in completion order would shuffle it.
+     */
+    private suspend fun hydrate(ids: List<MediaId>): List<MediaItem> = coroutineScope {
+        ids.distinctBy(MediaId::key)
+            .map { id -> async { details(id) } }
+            .awaitAll()
+            .filterNotNull()
+    }
+
+    /** Reports a play to Trakt; a no-op when no account is connected. */
+    suspend fun scrobble(
+        action: TraktScrobble,
+        id: MediaId,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        progressPercent: Float,
+    ) = withContext(ioDispatcher) {
+        trakt.scrobble(action, id, seasonNumber, episodeNumber, progressPercent)
+    }
+
+    suspend fun traktStatus(): TraktStatus = withContext(ioDispatcher) { trakt.status() }
+
+    suspend fun traktDeviceCode(): TraktDeviceCode? = withContext(ioDispatcher) {
+        trakt.requestDeviceCode()
+    }
+
+    suspend fun traktPoll(deviceCode: String): TraktPollResult = withContext(ioDispatcher) {
+        trakt.pollForToken(deviceCode)
+    }
+
+    suspend fun traktDisconnect() = withContext(ioDispatcher) { trakt.disconnect() }
+
+    suspend fun addToWatchlist(id: MediaId): Boolean =
+        withContext(ioDispatcher) { trakt.addToWatchlist(id) }
+
+    suspend fun removeFromWatchlist(id: MediaId): Boolean =
+        withContext(ioDispatcher) { trakt.removeFromWatchlist(id) }
 
     suspend fun search(query: String, type: MediaType): List<MediaItem> =
         withContext(ioDispatcher) { catalog.search(query, type) }

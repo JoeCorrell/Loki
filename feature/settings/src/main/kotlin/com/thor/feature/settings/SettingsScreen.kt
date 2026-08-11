@@ -117,6 +117,13 @@ fun SettingsScreen(
     val smartFolders by viewModel.smartFolders.collectAsStateWithLifecycle()
     val editingSmartFolderId by viewModel.editingSmartFolderId.collectAsStateWithLifecycle()
     val smartFolderStatus by viewModel.smartFolderStatus.collectAsStateWithLifecycle()
+    val editingSmbServerId by viewModel.editingSmbServerId.collectAsStateWithLifecycle()
+    val smbStatus by viewModel.smbStatus.collectAsStateWithLifecycle()
+    val smbTesting by viewModel.smbTesting.collectAsStateWithLifecycle()
+    val discoveredServers by viewModel.discoveredServers.collectAsStateWithLifecycle()
+    val scanningNetwork by viewModel.scanningNetwork.collectAsStateWithLifecycle()
+    val traktCode by viewModel.traktCode.collectAsStateWithLifecycle()
+    val traktStatus by viewModel.traktStatus.collectAsStateWithLifecycle()
     val editingProfileId by viewModel.editingProfileId.collectAsStateWithLifecycle()
     val awaitingBindingFor by viewModel.awaitingBindingFor.collectAsStateWithLifecycle()
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
@@ -172,6 +179,12 @@ fun SettingsScreen(
             // id behind for a frame, and counting the long page over rows that are
             // no longer drawn strands the cursor past the end.
             editingSmartFolder = smartFolders.any { it.id == editingSmartFolderId },
+            smbServerCount = settings.smbServers.size,
+            // And the same guard again, for the same frame after "Remove".
+            editingSmbServer = settings.smbServers.any { it.id == editingSmbServerId },
+            discoveredServerCount = discoveredServers.size,
+            traktConnected = settings.media.trakt.isConnected,
+            traktSigningIn = traktCode != null,
             customThemeCount = settings.personalization.customThemes.size,
             // Only counts as open if the theme it names still exists — deleting the
             // open theme leaves the id behind for a frame, and a count for the long
@@ -440,6 +453,13 @@ fun SettingsScreen(
                                 awaitingBindingFor = awaitingBindingFor,
                                 backupStatus = backupStatus,
                                 restartRequired = restartRequired,
+                                editingSmbServerId = editingSmbServerId,
+                                smbStatus = smbStatus,
+                                smbTesting = smbTesting,
+                                discoveredServers = discoveredServers,
+                                scanningNetwork = scanningNetwork,
+                                traktCode = traktCode,
+                                traktStatus = traktStatus,
                             )
                         }
 

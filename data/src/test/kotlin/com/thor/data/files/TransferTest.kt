@@ -24,8 +24,19 @@ class TransferTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    /**
+     * A real local source and an SMB source with no servers behind it.
+     *
+     * Not a mock of either. The whole point of these tests is that the copy engine
+     * behaves against a real filesystem, and the SMB source is inert here for a
+     * reason rather than by stubbing: it claims only `smb://` paths, so with every
+     * path in these tests being a temporary folder it is never consulted.
+     */
     private val repository = FileRepository(
-        appContext = mockk(relaxed = true),
+        local = LocalFileSource(),
+        remote = SmbFileSource { emptyList() },
+        // Never called: nothing here scans a network.
+        discovery = mockk(relaxed = true),
         ioDispatcher = Dispatchers.Unconfined,
     )
 

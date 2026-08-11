@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.SdStorage
@@ -374,20 +375,26 @@ private fun ShortcutRail(state: FilesUiState, actions: FileBrowserActions) {
 
     GlassSurface(modifier = Modifier.width(RAIL_WIDTH.dp).fillMaxHeight()) {
         Column(modifier = Modifier.fillMaxSize().padding(dimens.spacingSmall)) {
-            Text(
-                text = "STORAGE",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = SECTION_ALPHA),
-                modifier = Modifier.padding(
-                    start = dimens.spacingSmall,
-                    top = dimens.spacingSmall,
-                    bottom = dimens.spacingSmall,
-                ),
-            )
+            RailSection("THIS DEVICE")
 
             LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 items(state.shortcuts.size) { index ->
                     val shortcut = state.shortcuts[index]
+
+                    /*
+                     * A heading above the first share.
+                     *
+                     * Shares are appended after the device's own volumes, so this
+                     * fires once — at the boundary — and says what the rows under
+                     * it are. Without it a NAS is just another row in a list
+                     * headed "storage", which is the one thing it is not: it can
+                     * be unreachable, it is slower, and it belongs to a machine
+                     * that is not this one.
+                     */
+                    if (shortcut.remote && (index == 0 || !state.shortcuts[index - 1].remote)) {
+                        RailSection("NETWORK")
+                    }
+
                     ShortcutRow(
                         shortcut = shortcut,
                         focused = inRail && index == state.shortcutCursor,
@@ -407,6 +414,35 @@ private fun ShortcutRail(state: FilesUiState, actions: FileBrowserActions) {
                             actions.onOpenShortcut(shortcut)
                         },
                     )
+                }
+
+                /*
+                 * Where network shares come from, said in the place people look
+                 * for them.
+                 *
+                 * Shown only when there are none, and it is the answer to a
+                 * question this screen was otherwise silent about: a rail listing
+                 * nothing but the device's own volumes gives no indication that
+                 * shares exist at all, so somebody who has one is left looking at
+                 * "Internal storage" and wondering where their NAS went. Not
+                 * focusable — the explorer cannot open Settings, and a row that
+                 * takes the cursor and then refuses to do anything is worse than a
+                 * sentence.
+                 */
+                if (state.shortcuts.none(FileShortcut::remote)) {
+                    item {
+                        RailSection("NETWORK")
+                        Text(
+                            text = "Add a server in Settings › System › Network shares",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant.copy(alpha = SECTION_ALPHA),
+                            modifier = Modifier.padding(
+                                start = dimens.spacingSmall,
+                                end = dimens.spacingSmall,
+                                bottom = dimens.spacingSmall,
+                            ),
+                        )
+                    }
                 }
             }
 
@@ -444,6 +480,22 @@ private fun ShortcutRail(state: FilesUiState, actions: FileBrowserActions) {
     }
 }
 
+/** A heading in the rail: drawn, never focused, so it costs the cursor nothing. */
+@Composable
+private fun RailSection(title: String) {
+    val dimens = ThorTheme.dimens
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelSmall,
+        color = ThorTheme.colors.onSurfaceVariant.copy(alpha = SECTION_ALPHA),
+        modifier = Modifier.padding(
+            start = dimens.spacingSmall,
+            top = dimens.spacingSmall,
+            bottom = dimens.spacingSmall,
+        ),
+    )
+}
+
 @Composable
 private fun ShortcutRow(
     shortcut: FileShortcut,
@@ -469,7 +521,10 @@ private fun ShortcutRow(
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
         Icon(
-            imageVector = Icons.Rounded.SdStorage,
+            // A share is marked, because it behaves differently enough to be worth
+            // knowing before you press it: it can be unreachable, it is slower, and
+            // a copy onto it is a transfer rather than a filesystem operation.
+            imageVector = if (shortcut.remote) Icons.Rounded.Lan else Icons.Rounded.SdStorage,
             contentDescription = null,
             tint = if (lit) colors.cursor else colors.onSurfaceVariant,
             modifier = Modifier.size(RAIL_GLYPH.dp),

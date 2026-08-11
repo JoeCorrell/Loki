@@ -20,6 +20,7 @@ import com.thor.core.model.MouseSettings
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.RecordingSettings
 import com.thor.core.model.PersonalizationSettings
+import com.thor.core.model.SmbServer
 import com.thor.core.model.ThorSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -116,6 +117,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateIconPacks(transform: (List<IconPack>) -> List<IconPack>) {
         edit { it.copy(iconPacks = transform(it.iconPacks)) }
+    }
+
+    suspend fun updateSmbServers(transform: (List<SmbServer>) -> List<SmbServer>) {
+        edit { it.copy(smbServers = transform(it.smbServers)) }
     }
 
     suspend fun updateMouse(transform: (MouseSettings) -> MouseSettings) {

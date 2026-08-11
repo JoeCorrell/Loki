@@ -37,6 +37,33 @@ android {
             "SCREENSCRAPER_DEV_PASSWORD",
             "\"${localProperty("thor.screenscraper.devPassword")}\"",
         )
+
+        /*
+         * Trakt identifies the *application*, and the viewer signs in to it.
+         *
+         * Registered once at trakt.tv/oauth/applications and compiled in, the
+         * same arrangement as the ScreenScraper key above — every player that
+         * talks to Trakt does this, which is why none of them ask the user for
+         * an application id. Set the redirect URI to
+         * `urn:ietf:wg:oauth:2.0:oob`, which is what the device-code flow needs.
+         *
+         *     # local.properties (or ~/.gradle/gradle.properties)
+         *     thor.trakt.clientId=yourClientId
+         *     thor.trakt.clientSecret=yourClientSecret
+         *
+         * Left blank, the settings page says Trakt is unavailable in this build
+         * rather than offering a sign-in that cannot succeed.
+         */
+        buildConfigField(
+            "String",
+            "TRAKT_CLIENT_ID",
+            "\"${localProperty("thor.trakt.clientId")}\"",
+        )
+        buildConfigField(
+            "String",
+            "TRAKT_CLIENT_SECRET",
+            "\"${localProperty("thor.trakt.clientSecret")}\"",
+        )
     }
 
     // Off by default in the library convention plugin; the credentials above
@@ -78,4 +105,18 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.apache.commons.compress)
     implementation(libs.bouncycastle.pkix)
+
+    /*
+     * SMB shares in the file explorer.
+     *
+     * BouncyCastle is excluded because jcifs-ng asks for the `jdk15on` build of
+     * it and this module already carries `jdk18on` for certificate generation.
+     * They are the same library under two artifact names and declare the same
+     * classes, which dex refuses outright — and the newer one satisfies
+     * everything jcifs-ng reaches for, which is only the SMB3 encryption
+     * primitives.
+     */
+    implementation(libs.jcifs.ng) {
+        exclude(group = "org.bouncycastle")
+    }
 }

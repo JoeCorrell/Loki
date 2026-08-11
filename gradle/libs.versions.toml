@@ -50,6 +50,7 @@ kotlinxSerialization = "1.8.1"
 kotlinxCoroutines = "1.10.2"
 kotlinxDatetime = "0.6.2"
 apacheCompress = "1.27.1"
+jcifsNg = "2.1.10"
 
 # --- Testing -----------------------------------------------------------------
 junit4 = "4.13.2"
@@ -150,6 +151,13 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-kotlinx-serialization = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitSerialization" }
 apache-commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "apacheCompress" }
+
+# SMB, for network shares in the file explorer. jcifs-ng rather than the original
+# jcifs because it speaks SMB2 and SMB3 — Windows has shipped with SMB1 disabled
+# since 2017, and every NAS worth connecting to now follows suit, so the older
+# library reaches almost nothing. Its `SmbFile` is deliberately shaped like
+# `java.io.File`, which is what lets one set of copy/move code serve both.
+jcifs-ng = { group = "eu.agno3.jcifs", name = "jcifs-ng", version.ref = "jcifsNg" }
 
 # Generating the client certificate pairing is bound to. Android can read X.509
 # but has no public API to create one, and the platform's own BouncyCastle is

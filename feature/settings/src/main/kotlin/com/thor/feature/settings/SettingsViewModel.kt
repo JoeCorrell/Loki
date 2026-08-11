@@ -32,6 +32,15 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.SmartFolderPreset
 import com.thor.core.model.MotionStyle
 import com.thor.core.model.SmartQuery
+import com.thor.core.model.SmbServer
+import com.thor.data.files.DiscoveredServer
+import com.thor.data.files.FileRepository
+import com.thor.data.media.TraktDeviceCode
+import com.thor.data.media.TraktPollResult
+import com.thor.data.media.TraktStatus
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import java.util.UUID
 import com.thor.core.model.SurfaceStyle
 import com.thor.core.model.ThemeFile
 import com.thor.core.model.ThemeId
@@ -157,6 +166,8 @@ class SettingsViewModel @Inject constructor(
     private val achievementSyncManager: AchievementSyncManager,
     private val retroAchievements: RetroAchievementsClient,
     private val backupManager: BackupManager,
+    /** Only for the connection check on the network shares page. */
+    private val fileRepository: FileRepository,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
@@ -1197,6 +1208,271 @@ class SettingsViewModel @Inject constructor(
             gridRepository.deleteFolder(folderId)
             if (_editingSmartFolderId.value == folderId) _editingSmartFolderId.value = null
             _smartFolderStatus.value = "Folder deleted."
+        }
+    }
+
+    // ---- Trakt -------------------------------------------------------------
+
+    /** The code the viewer is entering elsewhere, or null when not signing in. */
+    private val _traktCode = MutableStateFlow<TraktDeviceCode?>(null)
+    val traktCode: StateFlow<TraktDeviceCode?> = _traktCode.asStateFlow()
+
+    private val _traktStatus = MutableStateFlow<String?>(null)
+    val traktStatus: StateFlow<String?> = _traktStatus.asStateFlow()
+
+    private var traktPollJob: Job? = null
+
+    /**
+     * Starts the device-code sign-in and waits for it to be used.
+     *
+     * The waiting is a loop here rather than inside the client, because it is the
+     * *page* that decides how long to wait: it holds the code on screen, and it
+     * is what goes away when the viewer navigates off. A poll loop owned by a
+     * singleton would carry on asking long after anybody was looking at the code
+     * it was asking about.
+     *
+     * Trakt states the interval and Loki honours it — polling faster earns a 429
+     * and no answer, which would look exactly like a code that never worked.
+     */
+    fun connectTrakt() {
+        traktPollJob?.cancel()
+        traktPollJob = viewModelScope.launchSafely(TAG) {
+            _traktStatus.value = "Asking Trakt for a code…"
+
+            val code = mediaRepository.traktDeviceCode()
+            if (code == null) {
+                _traktStatus.value = "Trakt is not available in this build"
+                return@launchSafely
+            }
+
+            _traktCode.value = code
+            _traktStatus.value = null
+
+            val deadline = System.currentTimeMillis() + code.expiresInSeconds * 1000L
+            while (System.currentTimeMillis() < deadline) {
+                delay(code.intervalSeconds * 1000L)
+
+                when (val result = mediaRepository.traktPoll(code.deviceCode)) {
+                    TraktPollResult.Pending -> Unit
+
+                    is TraktPollResult.Connected -> {
+                        _traktCode.value = null
+                        _traktStatus.value = "Signed in as ${result.username.ifBlank { "your account" }}."
+                        return@launchSafely
+                    }
+
+                    TraktPollResult.Expired -> {
+                        _traktCode.value = null
+                        _traktStatus.value = "That code ran out. Try connecting again."
+                        return@launchSafely
+                    }
+
+                    is TraktPollResult.Failed -> {
+                        _traktCode.value = null
+                        _traktStatus.value = result.reason
+                        return@launchSafely
+                    }
+                }
+            }
+
+            _traktCode.value = null
+            _traktStatus.value = "That code ran out. Try connecting again."
+        }
+    }
+
+    fun cancelTraktSignIn() {
+        traktPollJob?.cancel()
+        traktPollJob = null
+        _traktCode.value = null
+        _traktStatus.value = null
+    }
+
+    fun disconnectTrakt() {
+        cancelTraktSignIn()
+        viewModelScope.launchSafely(TAG) {
+            mediaRepository.traktDisconnect()
+            _traktStatus.value = "Signed out on this device."
+        }
+    }
+
+    fun checkTrakt() {
+        viewModelScope.launchSafely(TAG) {
+            _traktStatus.value = "Asking Trakt…"
+            _traktStatus.value = when (val status = mediaRepository.traktStatus()) {
+                is TraktStatus.Connected -> "Signed in as ${status.username}."
+                TraktStatus.NotConnected -> "No account is connected."
+                TraktStatus.Expired -> "Trakt would not accept this device. Sign in again."
+                TraktStatus.Unavailable -> "Trakt is not available in this build."
+            }
+        }
+    }
+
+    fun setTraktScrobble(enabled: Boolean) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateMedia { it.copy(trakt = it.trakt.copy(scrobble = enabled)) }
+        }
+    }
+
+    fun setTraktRows(enabled: Boolean) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateMedia { it.copy(trakt = it.trakt.copy(showRows = enabled)) }
+        }
+    }
+
+    // ---- Network shares ----------------------------------------------------
+
+    /** Which server the page has open. View state, as [editingSmartFolderId] is. */
+    private val _editingSmbServerId = MutableStateFlow<String?>(null)
+    val editingSmbServerId: StateFlow<String?> = _editingSmbServerId.asStateFlow()
+
+    /**
+     * What the last connection check said, or what just changed.
+     *
+     * One line rather than a per-field validity model, because there is only one
+     * question worth answering on this page — does it connect — and it cannot be
+     * answered from the fields at all. A host that resolves, a password that is
+     * right and a share that is exported are three different servers' worth of
+     * things going wrong, and only the server can say which.
+     */
+    private val _smbStatus = MutableStateFlow<String?>(null)
+    val smbStatus: StateFlow<String?> = _smbStatus.asStateFlow()
+
+    private val _smbTesting = MutableStateFlow(false)
+    val smbTesting: StateFlow<Boolean> = _smbTesting.asStateFlow()
+
+    /** What the last scan found, minus anything already set up. */
+    private val _discoveredServers = MutableStateFlow<List<DiscoveredServer>>(emptyList())
+    val discoveredServers: StateFlow<List<DiscoveredServer>> = _discoveredServers.asStateFlow()
+
+    private val _scanningNetwork = MutableStateFlow(false)
+    val scanningNetwork: StateFlow<Boolean> = _scanningNetwork.asStateFlow()
+
+    /** Adds an empty server and opens it, so the page lands on the fields. */
+    fun addSmbServer() {
+        viewModelScope.launchSafely(TAG) {
+            val server = SmbServer(id = UUID.randomUUID().toString())
+            settingsRepository.updateSmbServers { it + server }
+            _editingSmbServerId.value = server.id
+            _smbStatus.value = "Enter the server's address, then test it."
+        }
+    }
+
+    /**
+     * Asks the network what is out there.
+     *
+     * Servers already set up are filtered out of the result rather than shown and
+     * dimmed: this list is a list of things to *add*, and an entry that cannot be
+     * added is a row the cursor has to walk past for no reason.
+     */
+    fun scanForSmbServers() {
+        if (_scanningNetwork.value) return
+
+        viewModelScope.launchSafely(TAG) {
+            _scanningNetwork.value = true
+            _smbStatus.value = "Looking for servers on this network…"
+            try {
+                val known = settingsRepository.current().smbServers
+                    .map { it.host.trim().lowercase() }
+                    .toSet()
+
+                val found = fileRepository.discoverServers()
+                    .filterNot { it.address.lowercase() in known }
+                    .filterNot { it.name?.lowercase() in known }
+
+                _discoveredServers.value = found
+                _smbStatus.value = when {
+                    found.isNotEmpty() ->
+                        "Found ${found.size} ${if (found.size == 1) "server" else "servers"}."
+
+                    known.isEmpty() ->
+                        "Nothing answered. Check you are on the same network, or add " +
+                            "the server by address."
+
+                    else -> "Nothing new answered."
+                }
+            } finally {
+                _scanningNetwork.value = false
+            }
+        }
+    }
+
+    /**
+     * Adopts a discovered server and opens it.
+     *
+     * Opened rather than merely added, because the one thing a scan cannot find
+     * out is the credentials — and almost every share wants some. Landing on the
+     * fields puts the user where the remaining work is.
+     */
+    fun addDiscoveredServer(discovered: DiscoveredServer) {
+        viewModelScope.launchSafely(TAG) {
+            val server = SmbServer(
+                id = UUID.randomUUID().toString(),
+                label = discovered.name.orEmpty(),
+                // The address, never the announced name. A name from mDNS resolves
+                // only while the responder is awake and only for clients that
+                // speak it; the address is what actually answered on 445.
+                host = discovered.address,
+                // The optimistic default, and the one that costs nothing to be
+                // wrong about: an open share connects, and a closed one says the
+                // credentials were refused — which is the prompt to fill them in.
+                guest = true,
+            )
+            settingsRepository.updateSmbServers { it + server }
+            _discoveredServers.value = _discoveredServers.value - discovered
+            _editingSmbServerId.value = server.id
+            _smbStatus.value = "Added. Test it, and sign in if it asks."
+        }
+    }
+
+    fun editSmbServer(id: String?) {
+        _editingSmbServerId.value = id
+        _smbStatus.value = null
+    }
+
+    /**
+     * Applies a change to one server.
+     *
+     * Reads the stored value inside the update rather than taking it as a
+     * parameter, so a username and a password typed in quick succession compose
+     * instead of the second write carrying a stale copy of the first field.
+     */
+    fun updateSmbServer(id: String, transform: (SmbServer) -> SmbServer) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateSmbServers { servers ->
+                servers.map { if (it.id == id) transform(it) else it }
+            }
+            // Whatever the last check said is about the settings as they were.
+            _smbStatus.value = null
+        }
+    }
+
+    fun deleteSmbServer(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateSmbServers { servers -> servers.filterNot { it.id == id } }
+            if (_editingSmbServerId.value == id) _editingSmbServerId.value = null
+            _smbStatus.value = "Server removed."
+        }
+    }
+
+    /**
+     * Connects, and reports whatever came back.
+     *
+     * The only honest validation available. Everything on this page is a string
+     * the server has an opinion about, and nothing on the device can check any of
+     * it — so rather than colouring fields on a guess, the page has a button that
+     * asks.
+     */
+    fun testSmbServer(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            val server = settingsRepository.current().smbServers.firstOrNull { it.id == id }
+                ?: return@launchSafely
+            _smbTesting.value = true
+            _smbStatus.value = "Connecting to ${server.host}…"
+            try {
+                _smbStatus.value = fileRepository.testServer(server)
+            } finally {
+                _smbTesting.value = false
+            }
         }
     }
 

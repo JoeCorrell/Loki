@@ -62,6 +62,21 @@
 # Optional codecs referenced by Commons Compress but not bundled.
 -dontwarn org.apache.commons.compress.**
 
+# ------------------------------------------------------------- SMB shares
+# jcifs-ng logs through SLF4J, and SLF4J finds its logger by looking up a class
+# that a *binding* jar is expected to supply. No binding is shipped, on purpose:
+# the launcher has its own logger, and the only thing an SMB binding would add is
+# jcifs's internal chatter in the release build. SLF4J handles the class being
+# absent — it falls back to a no-op logger and says so once — but R8 sees a
+# reference it cannot resolve and stops.
+#
+# jcifs itself reaches for a few optional pieces the same way: Kerberos through
+# JGSS, which Android has no provider for, and the BouncyCastle build excluded in
+# `data/build.gradle.kts` in favour of the newer one already here.
+-dontwarn org.slf4j.**
+-dontwarn jcifs.**
+-dontwarn org.ietf.jgss.**
+
 # ------------------------------------------------------------------ enums
 # `PerformanceProfile.valueOf` runs against persisted column values, so the
 # synthetic enum accessors have to stay. `Enum.valueOf` matches the name captured

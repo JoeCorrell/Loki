@@ -16,6 +16,8 @@ import com.thor.core.model.Platform
 import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.ThorSettings
 import com.thor.data.achievements.AchievementSyncState
+import com.thor.data.files.DiscoveredServer
+import com.thor.data.media.TraktDeviceCode
 import com.thor.data.achievements.RetroAchievementsStatus
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.sync.ScrapeState
@@ -90,6 +92,16 @@ fun SettingsPageContent(
     /** What the last backup or restore said, and whether a restart is pending. */
     backupStatus: String? = null,
     restartRequired: Boolean = false,
+    /** Which network share is open, and what the last connection check said. */
+    editingSmbServerId: String? = null,
+    smbStatus: String? = null,
+    smbTesting: Boolean = false,
+    /** What the last network scan found, and whether one is running. */
+    discoveredServers: List<DiscoveredServer> = emptyList(),
+    scanningNetwork: Boolean = false,
+    /** The Trakt sign-in code being waited on, and what the last action said. */
+    traktCode: TraktDeviceCode? = null,
+    traktStatus: String? = null,
 ) {
     Column(
         modifier = Modifier
@@ -153,6 +165,9 @@ fun SettingsPageContent(
             SettingsPage.MOVIES_PLAYBACK ->
                 MoviesPlaybackPage(settings, focusedRow, viewModel)
 
+            SettingsPage.MOVIES_TRAKT ->
+                TraktPage(settings, focusedRow, viewModel, traktStatus, traktCode)
+
             SettingsPage.STREAM_QUALITY -> StreamQualityPage(settings, focusedRow, viewModel)
             SettingsPage.STREAM_CONTROLS -> StreamControlsPage(settings, focusedRow, viewModel)
             SettingsPage.STREAM_HOSTS -> StreamHostsPage(settings, focusedRow, viewModel)
@@ -183,6 +198,17 @@ fun SettingsPageContent(
                 status = backupStatus,
                 restartRequired = restartRequired,
             )
+            SettingsPage.NETWORK_SHARES -> NetworkSharesPage(
+                servers = settings.smbServers,
+                focusedRow = focusedRow,
+                viewModel = viewModel,
+                editingId = editingSmbServerId,
+                status = smbStatus,
+                testing = smbTesting,
+                discovered = discoveredServers,
+                scanning = scanningNetwork,
+            )
+
             SettingsPage.EXTENSIONS -> ExtensionsPage(settings, focusedRow, viewModel, extensionStatus)
             SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings, focusedRow, viewModel)
         }
@@ -215,6 +241,13 @@ fun rowCountFor(
     /** As the other two editors: a short list until one is opened. */
     customProfileCount: Int = 0,
     editingProfile: Boolean = false,
+    /** And again for network shares. */
+    smbServerCount: Int = 0,
+    editingSmbServer: Boolean = false,
+    discoveredServerCount: Int = 0,
+    /** Trakt's page is three different shapes; see `traktRows`. */
+    traktConnected: Boolean = false,
+    traktSigningIn: Boolean = false,
 ): Int = when (page) {
     SettingsPage.THEME -> THEME_ROWS
     SettingsPage.SURFACES -> SURFACES_ROWS
@@ -243,6 +276,7 @@ fun rowCountFor(
     // add button and the summary.
     SettingsPage.MOVIES_CATALOGUE -> moviesCatalogueRows(mediaSettings)
     SettingsPage.MOVIES_PLAYBACK -> MOVIES_PLAYBACK_ROWS
+    SettingsPage.MOVIES_TRAKT -> traktRows(traktConnected, traktSigningIn)
     SettingsPage.STREAM_QUALITY -> STREAM_QUALITY_ROWS
     SettingsPage.STREAM_CONTROLS -> STREAM_CONTROLS_ROWS
     SettingsPage.STREAM_HOSTS -> STREAM_HOSTS_ROWS
@@ -257,6 +291,8 @@ fun rowCountFor(
     // One row: what sound goes on a capture. See [RecordingAudio] for why there
     // is no game-audio option to make it two.
     SettingsPage.RECORDING -> 1
+    SettingsPage.NETWORK_SHARES ->
+        networkSharesRows(smbServerCount, discoveredServerCount, editingSmbServer)
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
 }
