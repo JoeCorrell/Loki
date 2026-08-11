@@ -91,6 +91,7 @@ data class CachedFileVariant(val fileIds: List<Int>)
 class DebridGateway @Inject constructor(
     private val realDebrid: RealDebridClient,
     private val torBox: TorBoxClient,
+    private val allDebrid: AllDebridClient,
     private val settings: SettingsRepository,
 ) {
 
@@ -98,6 +99,7 @@ class DebridGateway @Inject constructor(
         when (settings.media.first().debridService) {
             DebridService.REAL_DEBRID -> realDebrid
             DebridService.TORBOX -> torBox
+            DebridService.ALL_DEBRID -> allDebrid
         }
 
     /** What to call the selected service when reporting to the user. */

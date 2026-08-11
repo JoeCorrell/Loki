@@ -84,6 +84,7 @@ internal fun MoviesCataloguePage(
                     when (it.debridService) {
                         DebridService.REAL_DEBRID -> it.copy(realDebridToken = token)
                         DebridService.TORBOX -> it.copy(torBoxApiKey = token)
+                        DebridService.ALL_DEBRID -> it.copy(allDebridApiKey = token)
                     }
                 }
             },
@@ -333,9 +334,23 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Only instantly playable sources",
-            subtitle = "Hide anything ${media.debridService.label} does not already " +
-                "hold. An uncached " +
-                "torrent is a download, not a stream.",
+            /*
+             * Says so when the selected service cannot answer.
+             *
+             * AllDebrid withdrew its instant-availability endpoint, so with that
+             * account chosen nothing can be filtered by cache status and this
+             * switch has no effect. Left switched on and silent, it would look
+             * like a setting being ignored — which is worse than the limitation
+             * it is hiding, because the viewer goes looking for a bug.
+             */
+            subtitle = if (media.debridService.reportsCachedFiles) {
+                "Hide anything ${media.debridService.label} does not already " +
+                    "hold. An uncached torrent is a download, not a stream."
+            } else {
+                "${media.debridService.label} will not say what it has cached, so " +
+                    "this has no effect. A source it already holds still starts " +
+                    "instantly — you just cannot tell which before pressing it."
+            },
             checked = media.cachedOnly,
             focused = focusedRow == 2,
             onCheckedChange = { on -> viewModel.updateMedia { it.copy(cachedOnly = on) } },

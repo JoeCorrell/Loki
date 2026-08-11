@@ -42,6 +42,9 @@ data class MediaSettings(
     /** TorBox API key, used when [debridService] names it. */
     val torBoxApiKey: String = "",
 
+    /** AllDebrid API key, used when [debridService] names it. */
+    val allDebridApiKey: String = "",
+
     /**
      * Which debrid service turns a torrent into a stream.
      *
@@ -166,6 +169,7 @@ data class MediaSettings(
         get() = when (debridService) {
             DebridService.REAL_DEBRID -> realDebridToken
             DebridService.TORBOX -> torBoxApiKey
+            DebridService.ALL_DEBRID -> allDebridApiKey
         }
 
     val isDebridConfigured: Boolean get() = debridToken.isNotBlank()
@@ -196,6 +200,7 @@ data class MediaSettings(
 enum class DebridService(val label: String) {
     REAL_DEBRID("Real-Debrid"),
     TORBOX("TorBox"),
+    ALL_DEBRID("AllDebrid"),
     ;
 
     /** What its credential is called on its own website, so the field matches. */
@@ -203,7 +208,19 @@ enum class DebridService(val label: String) {
         get() = when (this) {
             REAL_DEBRID -> "API token"
             TORBOX -> "API key"
+            ALL_DEBRID -> "API key"
         }
+
+    /**
+     * Whether the service will say what it already holds before you ask for it.
+     *
+     * AllDebrid withdrew its instant-availability endpoint and nothing replaced
+     * it, so with that account selected a source list cannot be filtered or
+     * ordered by cache status. Named here rather than discovered in the source
+     * list, so the settings screen can say so plainly instead of leaving the
+     * viewer to work out why a switch they turned on appears to do nothing.
+     */
+    val reportsCachedFiles: Boolean get() = this != ALL_DEBRID
 }
 
 /**
