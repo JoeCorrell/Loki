@@ -6,6 +6,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.thor.core.model.AccentSlot
 import com.thor.core.model.ColorBlindMode
 import com.thor.core.model.ThemeSpec
 import kotlin.math.max
@@ -44,12 +45,28 @@ data class ThorColors(
     val outline: Color,
     val error: Color,
     val scrim: Color,
+    /**
+     * The category colours, indexed by [AccentSlot].
+     *
+     * Read on every row of every settings page, so it is a list rather than a
+     * map and it is resolved once when the theme is built.
+     */
+    val tints: List<Color> = emptyList(),
 ) {
     /** True when the scheme is dark enough to want light-on-dark content. */
     val isDark: Boolean get() = background.luminance() < 0.5f
 
     /** The accent pair, for gradient fills. */
     val accentStops: List<Color> get() = listOf(primary, accentEnd)
+
+    /**
+     * The colour this theme paints a category with.
+     *
+     * Falls back to the accent rather than to a constant, so a palette built
+     * before tints existed — or one that failed to resolve them — still draws
+     * something that belongs to the theme.
+     */
+    fun tint(slot: AccentSlot): Color = tints.getOrElse(slot.ordinal) { primary }
 }
 
 /**
@@ -86,6 +103,7 @@ fun buildThorColors(
     outline = Color(spec.outlineArgb),
     error = Color(spec.errorArgb),
     scrim = Color.Black.copy(alpha = if (spec.isDark) 0.62f else 0.38f),
+    tints = spec.tintsArgb.map { Color(it) },
 ).withColorBlindCorrection(colorBlindMode)
 
 /**
@@ -134,6 +152,11 @@ private fun ThorColors.withColorBlindCorrection(mode: ColorBlindMode): ThorColor
         cursor = adjust(cursor),
         glow = adjust(glow),
         error = adjust(error),
+        // The category tints are the one place in the launcher where colour is
+        // carrying meaning on its own, so they are the place this correction
+        // matters most: twelve hues that a dichromat cannot separate is twelve
+        // tiles that say nothing.
+        tints = tints.map(::adjust),
     )
 }
 

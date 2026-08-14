@@ -45,6 +45,7 @@ import androidx.compose.ui.window.Dialog
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.Platform
 import com.thor.feature.settings.EmulatorChoice
 import com.thor.core.ui.component.ArtworkImage
@@ -189,12 +190,16 @@ private fun PlatformPicker(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
 
     // Keeps the highlighted system on screen as the pad walks past the fold.
     LaunchedEffect(selected) {
         if (available.isNotEmpty()) {
-            listState.animateScrollToItem(selected.coerceIn(0, available.lastIndex))
+            listState.revealItem(
+                selected.coerceIn(0, available.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 

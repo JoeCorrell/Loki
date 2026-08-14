@@ -1,5 +1,7 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.runtime.Composable
 import com.thor.core.model.IconPack
 import com.thor.core.model.Platform
@@ -38,6 +40,7 @@ internal fun IconPacksPage(
      */
     SwitchRow(
         title = "Bundled console icons",
+        icon = Icons.Rounded.Image,
         subtitle = "Loki's own artwork on platform folders",
         checked = settings.personalization.bundledPlatformIcons,
         focused = focusedRow == 0,

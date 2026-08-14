@@ -1,5 +1,10 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.HideImage
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
@@ -96,6 +101,7 @@ internal fun ProfilesPage(
 
     ActionRow(
         title = "Add a profile",
+        icon = Icons.Rounded.PersonAdd,
         subtitle = "Starts with default settings and no games until it scans",
         focused = focusedRow == row,
         trailingLabel = "ADD",
@@ -155,6 +161,7 @@ internal fun ProfileEditPage(
     if (avatarPath != null) {
         ActionRow(
             title = "Remove picture",
+            icon = Icons.Rounded.HideImage,
             subtitle = "Goes back to the drawn initial",
             focused = focusedRow == row,
             trailingLabel = "REMOVE",
@@ -165,6 +172,7 @@ internal fun ProfileEditPage(
 
     TextFieldRow(
         title = "Name",
+        icon = Icons.Rounded.Badge,
         subtitle = "Shown on the top screen and in the profile list",
         value = profile.name,
         placeholder = "Player 1",
@@ -229,6 +237,7 @@ private fun AvatarRow(
 
     ActionRow(
         title = "Profile picture",
+        icon = Icons.Rounded.AccountCircle,
         subtitle = if (hasAvatar) {
             "Choose a different one"
         } else {

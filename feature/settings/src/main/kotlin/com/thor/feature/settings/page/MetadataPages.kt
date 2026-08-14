@@ -1,5 +1,14 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Password
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.QuestionMark
+import androidx.compose.material.icons.rounded.Rule
 import androidx.compose.runtime.Composable
 import com.thor.core.model.ThorSettings
 import com.thor.data.metadata.ProviderStatus
@@ -27,6 +36,7 @@ internal fun MetadataPage(
 
     ActionRow(
         title = "Download metadata",
+        icon = Icons.Rounded.CloudDownload,
         subtitle = when (scrapeState) {
             is ScrapeState.Running ->
                 "${scrapeState.done} of ${scrapeState.total} — ${scrapeState.currentTitle}"
@@ -51,6 +61,7 @@ internal fun MetadataPage(
     RowDivider()
     SwitchRow(
         title = "Only fill in missing data",
+        icon = Icons.Rounded.Rule,
         subtitle = "Leave already-scraped entries alone",
         checked = metadata.scrapeOnlyMissing,
         focused = focusedRow == 1,
@@ -59,6 +70,7 @@ internal fun MetadataPage(
     RowDivider()
     SwitchRow(
         title = "Ask during a full scrape",
+        icon = Icons.Rounded.QuestionMark,
         subtitle = "Stops on every game the providers disagree about. Off by " +
             "default so a library scrape can be left running — scraping a single " +
             "system always asks, whatever this is set to.",
@@ -77,6 +89,7 @@ internal fun MetadataPage(
      */
     ActionRow(
         title = "Fetch missing trailers",
+        icon = Icons.Rounded.Movie,
         subtitle = "Look up trailers for games that have none, without re-scraping " +
             "everything else",
         focused = focusedRow == 3,
@@ -87,6 +100,7 @@ internal fun MetadataPage(
     RowDivider()
     ActionRow(
         title = "Check connections",
+        icon = Icons.Rounded.NetworkCheck,
         subtitle = "Verify each provider's credentials actually work",
         focused = focusedRow == 4,
         trailingLabel = if (checking) "Checking…" else "Check",
@@ -142,6 +156,7 @@ internal fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "SteamGridDB key",
+        icon = Icons.Rounded.Key,
         subtitle = "Artwork. From steamgriddb.com/profile/preferences/api",
         value = metadata.apiKeys[PROVIDER_STEAMGRIDDB].orEmpty(),
         placeholder = "API key",
@@ -152,6 +167,7 @@ internal fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "ScreenScraper account",
+        icon = Icons.Rounded.Person,
         // These fields are what turns the provider on in a build with no
         // developer key of its own, which is this one.
         subtitle = if (screenScraperKeyMissing) {
@@ -167,6 +183,7 @@ internal fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "ScreenScraper password",
+        icon = Icons.Rounded.Password,
         value = metadata.screenScraperPassword,
         placeholder = "Password",
         isSecret = true,

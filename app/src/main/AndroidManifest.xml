@@ -309,16 +309,16 @@
           `landscape` because the panel is landscape and a game encoded for it
           has nothing sensible to show in portrait.
         -->
+        <!--
+          The stream session is declared by `:feature:stream` and merged in from
+          there, so the launcher and the standalone app cannot disagree about
+          it. Only the theme is stated here, which is the one attribute that is
+          genuinely this app's rather than the feature's.
+        -->
         <activity
-            android:name=".stream.StreamSessionActivity"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape"
-            android:stateNotNeeded="true"
-            android:resizeableActivity="false"
-            android:preferMinimalPostProcessing="true"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
-            android:theme="@style/Theme.Thor" />
+            android:name="com.thor.feature.stream.session.StreamSessionActivity"
+            android:theme="@style/Theme.Thor"
+            tools:node="merge" />
 
         <!--
           The controller pointer.

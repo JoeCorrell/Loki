@@ -225,16 +225,20 @@ private fun String.toInitials(): String? {
 fun ShimmerPlaceholder(modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
     val animationsOn = ThorTheme.materials.animationsEnabled
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = if (animationsOn) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "shimmerProgress",
-    )
+    val progress = if (animationsOn) {
+        val transition = rememberInfiniteTransition(label = "shimmer")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = ThorTheme.motion.scaledDuration(1400)),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "shimmerProgress",
+        ).value
+    } else {
+        0.5f
+    }
     Box(
         modifier = modifier.background(
             Brush.linearGradient(

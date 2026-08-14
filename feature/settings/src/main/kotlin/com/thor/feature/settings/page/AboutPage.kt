@@ -1,5 +1,11 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Gamepad
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -68,6 +74,7 @@ fun AboutPane(
 
         ActionRow(
             title = "Set as default launcher",
+            icon = Icons.Rounded.Home,
             subtitle = if (isDefaultLauncher) {
                 "Loki is your home app"
             } else {
@@ -80,6 +87,7 @@ fun AboutPane(
         RowDivider()
         ActionRow(
             title = "Replay the walkthrough",
+            icon = Icons.Rounded.Replay,
             subtitle = "The guided tour of both panels, the grid, the controls " +
                 "and every setting. Shown once when Loki is first set up.",
             focused = focusedRow == 1,
@@ -89,6 +97,7 @@ fun AboutPane(
         RowDivider()
         SwitchRow(
             title = "Verbose logging",
+            icon = Icons.Rounded.BugReport,
             subtitle = "Writes detailed output to logcat",
             checked = settings.developer.verboseLogging,
             focused = focusedRow == 2,
@@ -97,6 +106,7 @@ fun AboutPane(
         RowDivider()
         SwitchRow(
             title = "Button tester",
+            icon = Icons.Rounded.Gamepad,
             subtitle = "Reports what each button sends, without acting on it. " +
                 "Use Back to leave.",
             checked = keyCaptureEnabled,
@@ -130,6 +140,7 @@ fun AboutPane(
         RowDivider()
         ActionRow(
             title = "Reset all settings",
+            icon = Icons.Rounded.RestartAlt,
             subtitle = "Restores every option to its default. Library data is untouched.",
             focused = focusedRow == 4,
             destructive = true,

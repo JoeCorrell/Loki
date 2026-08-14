@@ -42,6 +42,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.MediaItem
 import com.thor.core.model.MediaRow
 import com.thor.core.model.MediaType
@@ -61,12 +62,16 @@ fun MoviesBrowseScreen(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val rows = state.visibleRows
 
     LaunchedEffect(state.cursor.row, rows.size) {
         if (rows.isNotEmpty()) {
-            listState.animateScrollToItem(state.cursor.row.coerceIn(0, rows.lastIndex))
+            listState.revealItem(
+                state.cursor.row.coerceIn(0, rows.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 
@@ -207,11 +212,15 @@ private fun Shelf(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
 
     LaunchedEffect(focusedColumn) {
         if (focusedColumn != null && row.items.isNotEmpty()) {
-            listState.animateScrollToItem(focusedColumn.coerceIn(0, row.items.lastIndex))
+            listState.revealItem(
+                focusedColumn.coerceIn(0, row.items.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 

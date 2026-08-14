@@ -8,6 +8,9 @@ import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -208,8 +211,8 @@ class LocalFileSource @Inject constructor() : FileSource {
 
     override suspend fun isDirectory(path: String): Boolean = File(path).isDirectory
 
-    override suspend fun children(path: String): List<String> =
-        File(path).listFiles()?.map { it.absolutePath }.orEmpty()
+    override suspend fun children(path: String): List<String>? =
+        File(path).listFiles()?.map { it.absolutePath }
 
     override suspend fun sizeOnDisk(path: String): Long = File(path).let { file ->
         if (file.isDirectory) {
@@ -237,8 +240,20 @@ class LocalFileSource @Inject constructor() : FileSource {
      * `renameTo` fails across volumes — internal storage to a card — and returns
      * false rather than throwing, which is exactly the contract this method wants.
      */
-    override suspend fun moveWithin(from: String, to: String): Boolean =
-        runCatching { File(from).renameTo(File(to)) }.getOrDefault(false)
+    override suspend fun moveWithin(from: String, to: String): Boolean = runCatching {
+        val source = File(from).toPath()
+        val target = File(to).toPath()
+        if (!Files.exists(source) || Files.exists(target)) return@runCatching false
+
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            // Still do not pass REPLACE_EXISTING: a destination created between
+            // the check and this call must win rather than be overwritten.
+            Files.move(source, target)
+        }
+        true
+    }.getOrDefault(false)
 
     override suspend fun identityOf(path: String): String =
         runCatching { File(path).canonicalPath }.getOrDefault(path)
@@ -270,10 +285,25 @@ class LocalFileSource @Inject constructor() : FileSource {
 }
 
 /** Strips what a filesystem cannot hold, so a bad name fails here and not deeper. */
-internal fun String.sanitized(): String =
-    trim().filterNot { it in ILLEGAL_NAME_CHARS }.take(MAX_NAME)
+internal fun String.sanitized(): String {
+    val cleaned = trim()
+        .filterNot { it in ILLEGAL_NAME_CHARS || it.isISOControl() }
+        .trimEnd(' ', '.')
+        .take(MAX_NAME)
+
+    return if (cleaned.substringBefore('.').uppercase() in RESERVED_NAMES) "" else cleaned
+}
 
 internal const val MAX_NAME = 255
 
 /** Reserved on the filesystems Android mounts, FAT included, and on SMB. */
 internal val ILLEGAL_NAME_CHARS = charArrayOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+
+/** Windows/SMB device names, also rejected on local storage for portable files. */
+private val RESERVED_NAMES = buildSet {
+    addAll(listOf("CON", "PRN", "AUX", "NUL", "CLOCK$"))
+    (1..9).forEach { number ->
+        add("COM$number")
+        add("LPT$number")
+    }
+}

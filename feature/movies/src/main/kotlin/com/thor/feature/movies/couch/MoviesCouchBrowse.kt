@@ -1,10 +1,8 @@
 package com.thor.feature.movies.couch
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,6 +75,8 @@ import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
+import com.thor.core.ui.motion.revealBy
+import com.thor.core.ui.motion.revealItem
 import com.thor.feature.movies.DetailState
 import com.thor.feature.movies.MoviesUiState
 
@@ -112,6 +112,7 @@ internal fun MoviesCouchBrowse(
 ) {
     val colors = ThorTheme.colors
     val rows = state.visibleRows
+    val animateMotion = ThorTheme.materials.animationsEnabled
     // The fetched record when it has arrived, the shelf's own summary until then,
     // so the featured card never blanks between moving and the details landing.
     val highlighted = detail.item ?: state.highlighted
@@ -135,7 +136,7 @@ internal fun MoviesCouchBrowse(
              * rule covers both, and the card needs no special case to stay on
              * screen while the top shelf is being walked.
              */
-            listState.animateScrollToItem(rowIndex)
+            listState.revealItem(rowIndex, animate = animateMotion)
         }
     }
 
@@ -284,6 +285,7 @@ private fun CouchMediaRail(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val railState = rememberLazyListState()
 
     // The rail is a map of where the cursor is, so it follows the cursor. A list
@@ -291,7 +293,10 @@ private fun CouchMediaRail(
     // second thing to navigate rather than an answer.
     LaunchedEffect(selectedRow, rows.size) {
         if (rows.isNotEmpty()) {
-            railState.animateScrollToItem(selectedRow.coerceIn(0, rows.lastIndex))
+            railState.revealItem(
+                selectedRow.coerceIn(0, rows.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 
@@ -779,6 +784,7 @@ private fun CouchShelf(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val cardWidth = couchCardWidth(artHeight, row.landscape)
 
@@ -799,7 +805,7 @@ private fun CouchShelf(
         val layout = listState.layoutInfo
         val visible = layout.visibleItemsInfo.firstOrNull { it.index == target }
         if (visible == null) {
-            listState.animateScrollToItem(target)
+            listState.revealItem(target, animate = animateMotion)
             return@LaunchedEffect
         }
         val leading = layout.viewportStartOffset + layout.beforeContentPadding
@@ -811,7 +817,7 @@ private fun CouchShelf(
             end > trailing -> end - trailing
             else -> 0
         }
-        if (overhang != 0) listState.animateScrollBy(overhang.toFloat())
+        if (overhang != 0) listState.revealBy(overhang.toFloat(), animate = animateMotion)
     }
 
     Column(modifier = modifier) {
@@ -904,6 +910,7 @@ private fun CouchTitleCard(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    val motion = ThorTheme.motion
     val shape = ThorTheme.shapes.small
     val hover = rememberPointerHover()
     val hovered = hover.isHovered
@@ -912,12 +919,12 @@ private fun CouchTitleCard(
     }
     val scale by animateFloatAsState(
         targetValue = if (focused) CARD_FOCUS_SCALE else 1f,
-        animationSpec = tween(FOCUS_MILLIS),
+        animationSpec = motion.tweenSpec(motion.scaledDuration(FOCUS_MILLIS)),
         label = "couch-title-focus",
     )
     val artAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else RESTING_ALPHA,
-        animationSpec = tween(FOCUS_MILLIS),
+        animationSpec = motion.tweenSpec(motion.scaledDuration(FOCUS_MILLIS)),
         label = "couch-title-depth",
     )
 

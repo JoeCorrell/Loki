@@ -1,6 +1,19 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CorporateFare
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.FolderShared
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Password
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import com.thor.core.model.SmbServer
 import com.thor.data.files.DiscoveredServer
 import com.thor.data.files.SmbDiscovery
@@ -54,6 +67,10 @@ private fun ServerList(
     viewModel: SettingsViewModel,
     status: String?,
 ) {
+    LaunchedEffect(viewModel) {
+        viewModel.onNetworkSharesShown()
+    }
+
     InfoRow(
         "Network shares",
         status ?: "Browse a NAS or a PC's shared folders from the file explorer, " +
@@ -63,16 +80,18 @@ private fun ServerList(
     RowDivider()
 
     ActionRow(
-        title = "Scan the network",
-        subtitle = "Looks for file servers on the network this device is joined to. " +
-            "Takes a few seconds.",
+        title = "Nearby file servers",
+        icon = Icons.Rounded.Radar,
+        subtitle = "Scans automatically when this page opens. Refresh after joining " +
+            "another network or waking a server.",
         focused = focusedRow == SCAN_ROW,
-        trailingLabel = if (scanning) "Scanning…" else "Scan",
+        trailingLabel = if (scanning) "Scanning…" else "Refresh",
         onClick = viewModel::scanForSmbServers,
     )
     RowDivider()
     ActionRow(
         title = "Add a server by address",
+        icon = Icons.Rounded.Add,
         subtitle = "For a server the scan cannot reach — another subnet, or a " +
             "network that blocks discovery",
         focused = focusedRow == ADD_ROW,
@@ -125,6 +144,7 @@ private fun ServerFields(
 
     TextFieldRow(
         title = "Address",
+        icon = Icons.Rounded.Dns,
         subtitle = "The server's hostname or IP — \"tower\", \"nas.local\", " +
             "\"192.168.1.20\". Leave off the slashes.",
         value = server.host,
@@ -137,6 +157,7 @@ private fun ServerFields(
     RowDivider()
     TextFieldRow(
         title = "Name",
+        icon = Icons.Rounded.Badge,
         subtitle = "What the explorer's sidebar calls it. Blank uses the address.",
         value = server.label,
         placeholder = server.host.ifBlank { "Network share" },
@@ -149,6 +170,7 @@ private fun ServerFields(
 
     SwitchRow(
         title = "Connect as a guest",
+        icon = Icons.Rounded.Person,
         subtitle = "For shares that are open to anyone. Turn this off to sign in.",
         checked = server.guest,
         focused = focusedRow == 2,
@@ -159,6 +181,7 @@ private fun ServerFields(
     RowDivider()
     TextFieldRow(
         title = "Username",
+        icon = Icons.Rounded.Person,
         subtitle = if (server.guest) {
             "Not used while guest access is on"
         } else {
@@ -174,6 +197,7 @@ private fun ServerFields(
     RowDivider()
     TextFieldRow(
         title = "Password",
+        icon = Icons.Rounded.Password,
         // Said plainly rather than left to be assumed. It is the same protection
         // the ScreenScraper and debrid credentials already have, and somebody
         // typing a NAS password into a games launcher deserves to be told.
@@ -188,6 +212,7 @@ private fun ServerFields(
     RowDivider()
     TextFieldRow(
         title = "Domain",
+        icon = Icons.Rounded.CorporateFare,
         subtitle = "Only for a work network with a domain controller. Leave blank " +
             "for a NAS or a home PC.",
         value = server.domain,
@@ -200,6 +225,7 @@ private fun ServerFields(
     RowDivider()
     TextFieldRow(
         title = "Share",
+        icon = Icons.Rounded.FolderShared,
         /*
          * Optional, and the reason it is here is worth stating.
          *
@@ -223,6 +249,7 @@ private fun ServerFields(
 
     ActionRow(
         title = "Test the connection",
+        icon = Icons.Rounded.NetworkCheck,
         subtitle = "Signs in and lists what is there. Nothing is changed on the server.",
         focused = focusedRow == 7,
         trailingLabel = if (testing) "Testing…" else "Test",
@@ -231,6 +258,7 @@ private fun ServerFields(
     RowDivider()
     ActionRow(
         title = "Remove this server",
+        icon = Icons.Rounded.Delete,
         subtitle = "Forgets the address and the password. Nothing on the server is " +
             "touched.",
         focused = focusedRow == 8,
@@ -241,6 +269,7 @@ private fun ServerFields(
     RowDivider()
     ActionRow(
         title = "Done",
+        icon = Icons.Rounded.Check,
         subtitle = "Back to the list",
         focused = focusedRow == 9,
         trailingLabel = "Done",

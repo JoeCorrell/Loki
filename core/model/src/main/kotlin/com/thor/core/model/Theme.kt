@@ -44,6 +44,11 @@ enum class ThemeId(val displayName: String) {
     ORCHID("Orchid"),
     TERMINAL("Terminal"),
 
+    // ---- Multi-colour --------------------------------------------------
+    PRISM("Prism"),
+    DUOTONE("Duotone"),
+    CARNIVAL("Carnival"),
+
     // ---- Editor --------------------------------------------------------
     ONE_DARK("One Dark"),
     PALENIGHT("Palenight"),
@@ -68,6 +73,17 @@ enum class ThemeFamily(val label: String) {
 
     /** Greens through violets. */
     COOL("Cool"),
+
+    /**
+     * Themes whose character is that they are more than one colour.
+     *
+     * A shelf about a theme's *structure* rather than its temperature, which is
+     * the axis these differ on: Prism and Carnival are not warm or cool, they are
+     * many. It exists because the other three shelves cannot describe them —
+     * filing a twelve-hue theme under "Warm" would be picking one of its colours
+     * and calling it the theme.
+     */
+    MULTI("Multi-colour"),
 
     /**
      * Palettes taken from code editors.
@@ -174,6 +190,107 @@ enum class ContrastLevel(
 }
 
 /**
+ * How many colours a theme is made of, and where they sit relative to each other.
+ *
+ * The system this joins could only describe a theme as one hue with everything
+ * derived from it — a secondary thirty degrees away, a gradient stop twenty. That
+ * is a real constraint dressed as a style: it can express "purple launcher" and
+ * cannot express "purple and gold", and every theme in the gallery therefore had
+ * the same relationship between its colours whatever else it disagreed about.
+ *
+ * A harmony says how many distinct hues the theme owns. Everything the launcher
+ * paints with a colour then snaps to the nearest one it is allowed — so the same
+ * screen is one colour under [MONOCHROME], three under [TRIADIC] and a full wheel
+ * under [SPECTRUM], with no screen having to know which.
+ *
+ * The offsets are degrees from the accent, in OKLCH, where equal steps are equal
+ * *perceived* steps — which is the whole reason the relationships hold up. The
+ * same arithmetic in HSL puts four of the twelve positions in the yellow-green
+ * corner and calls it a wheel.
+ */
+@Serializable
+enum class ThemeHarmony(val label: String, internal val offsets: List<Float>) {
+    /**
+     * One hue. The design is carried by lightness and by the surfaces.
+     *
+     * Not a degraded mode: it is what [ThemeId.OBSIDIAN] has always been, and it
+     * is the right answer for a launcher somebody wants to disappear.
+     */
+    MONOCHROME("Monochrome", listOf(0f)),
+
+    /** Neighbours. What every theme in the gallery used to be. */
+    ANALOGOUS("Analogous", listOf(0f, 32f, -32f)),
+
+    /** The accent and its opposite: two colours that argue. */
+    COMPLEMENTARY("Complementary", listOf(0f, 180f)),
+
+    /** The opposite, softened into a pair either side of it. */
+    SPLIT("Split", listOf(0f, 150f, 210f)),
+
+    /** Three colours evenly spaced. The classic three-colour scheme. */
+    TRIADIC("Triadic", listOf(0f, 120f, 240f)),
+
+    /** Two complementary pairs. Four families, and as far as most themes go. */
+    TETRADIC("Tetradic", listOf(0f, 90f, 180f, 270f)),
+
+    /**
+     * The whole wheel, at twelve positions.
+     *
+     * For a theme whose character *is* that everything is a different colour. The
+     * launcher has an icon tile on every row of every page, so this is the one
+     * harmony where that decoration becomes the theme rather than sitting on top
+     * of it.
+     */
+    SPECTRUM("Spectrum", List(12) { it * 30f }),
+    ;
+
+    /** Whether this theme genuinely has more than one colour in it. */
+    val isMultiColour: Boolean get() = offsets.size > 1
+}
+
+/**
+ * A position on the colour wheel that the interface paints things with.
+ *
+ * The launcher marks every settings row, every container spec and every component
+ * with a coloured tile, and those colours have to mean something: the driver row
+ * is *the green one*, and finding it is a colour match rather than a read. Twelve
+ * slots, because that is about as many hues as stay distinguishable at the size of
+ * a 16dp glyph, and because it divides the wheel evenly.
+ *
+ * [hue] is what the slot *wants*. What it gets is the nearest hue the theme's
+ * [ThemeHarmony] allows, so the meanings survive a monochrome theme by separating
+ * on lightness instead — see [ThemeRecipe.resolveTints].
+ *
+ * This replaced a hard-coded table of twenty-nine pastels, which had a bug worth
+ * recording: they were picked against a dark panel, and the launcher has light
+ * themes. On one of those, every icon in the app was a pale wash on near-white.
+ * Generating them against the resolved ground fixes that for free, and is most of
+ * why this is in the model rather than in the interface.
+ */
+@Serializable
+enum class AccentSlot(internal val hue: Float) {
+    RED(27f),
+    ORANGE(55f),
+    AMBER(83f),
+    LIME(120f),
+    GREEN(147f),
+    TEAL(178f),
+    CYAN(210f),
+    BLUE(248f),
+    INDIGO(272f),
+    VIOLET(300f),
+    MAGENTA(330f),
+
+    /**
+     * The slot with no colour, for a thing whose category is "no category".
+     *
+     * Kept as a slot rather than special-cased so callers never have to ask
+     * whether a tint is real. It resolves to the theme's own grey.
+     */
+    SLATE(0f),
+}
+
+/**
  * A theme, written as intent rather than as a table of colours.
  *
  * Every palette in the launcher used to be about thirty hand-picked ARGB values,
@@ -223,6 +340,23 @@ data class ThemeRecipe(
      * belongs on the neutral shelf whatever its hue says.
      */
     val accentChroma: Float,
+    /**
+     * How many colours this theme is, and where they sit. See [ThemeHarmony].
+     *
+     * Analogous by default because that is what every theme was before the
+     * harmony existed, so an unconverted recipe resolves to exactly the palette
+     * it used to.
+     */
+    val harmony: ThemeHarmony = ThemeHarmony.ANALOGOUS,
+    /**
+     * How colourful the interface's category tiles are, relative to the accent.
+     *
+     * Separate from [accentChroma] because the two answer different questions. A
+     * neutral theme wants a quiet accent *and* still wants its twelve category
+     * colours to be told apart; a loud theme may want the reverse. Below about
+     * 0.05 the slots stop separating by hue and the harmony is doing nothing.
+     */
+    val tintChroma: Float = 0.13f,
     /** Degrees the secondary accent sits from the primary. */
     val secondaryHueShift: Float = 34f,
     /** Degrees the far end of the accent gradient sits from the primary. */
@@ -399,7 +533,84 @@ data class ThemeRecipe(
             } else {
                 (material.backgroundDepth * options.depthScale).coerceIn(0f, 1f)
             },
+            tintsArgb = resolveTints(
+                accentHue = hue,
+                greyHue = greyHue,
+                greyChroma = greyChroma,
+                intensity = intensity,
+                dark = dark,
+                lightness = accentLightness,
+            ),
         )
+    }
+
+    /**
+     * The twelve category colours, resolved through this theme's harmony.
+     *
+     * Two rules, and between them they are the whole of what makes a harmony
+     * visible without making the interface unreadable.
+     *
+     * **A slot takes the nearest hue the theme allows.** Under [ThemeHarmony.SPECTRUM]
+     * that is its own, so green stays green; under [ThemeHarmony.TRIADIC] the
+     * twelve collapse into three families; under [ThemeHarmony.MONOCHROME] they
+     * all land on the accent. The interface never asks which — it asks for the
+     * driver colour and gets whatever this theme thinks that is.
+     *
+     * **Slots that collide separate on lightness.** A monochrome theme would
+     * otherwise paint all twelve tiles identically, and a page of identical tiles
+     * is worse than a page of none: it looks like information and carries none.
+     * The stagger is small — a tenth of the lightness range, spread over however
+     * many slots share a hue — so a green and a slightly-different green still
+     * read as one family rather than as a rainbow nobody asked for.
+     *
+     * Lightness comes from the accent's, which is the fix for the bug this
+     * replaced: it is high on a dark ground and low on a light one, so the tiles
+     * read on both instead of being pale washes chosen for one of them.
+     */
+    private fun resolveTints(
+        accentHue: Float,
+        greyHue: Float,
+        greyChroma: Float,
+        intensity: Float,
+        dark: Boolean,
+        lightness: Float,
+    ): List<Long> {
+        val allowed = harmony.offsets.map { (accentHue + it).mod(360f) }
+        val chroma = tintChroma * intensity
+
+        // How many slots landed on each hue, so a collision can be staggered by
+        // its position within its own group rather than by its position overall.
+        val snapped = AccentSlot.entries.map { slot ->
+            if (slot == AccentSlot.SLATE) null else allowed.minByOrNull { it.arcTo(slot.hue) }
+        }
+        val crowd = snapped.filterNotNull().groupingBy { it }.eachCount()
+        val seen = mutableMapOf<Float, Int>()
+
+        return AccentSlot.entries.map { slot ->
+            val hue = snapped[slot.ordinal]
+                ?: return@map Oklch(lightness, greyChroma, greyHue).toArgb()
+
+            val index = seen.getOrElse(hue) { 0 }
+            seen[hue] = index + 1
+            val sharing = crowd.getValue(hue)
+
+            /*
+             * Centred on the slot's own lightness rather than climbing from it,
+             * so a monochrome theme's tiles sit either side of the accent
+             * instead of the whole set drifting brighter than everything else
+             * on the page.
+             */
+            val offset = if (sharing <= 1) {
+                0f
+            } else {
+                (index / (sharing - 1f) - 0.5f) * TINT_LIGHTNESS_SPREAD
+            }
+            Oklch(
+                l = (lightness + if (dark) offset else -offset).coerceIn(0.25f, 0.92f),
+                c = chroma,
+                h = hue,
+            ).toArgb()
+        }
     }
 
     companion object {
@@ -416,6 +627,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.MATERIAL, family = ThemeFamily.NEUTRAL,
                 accentHue = 278f, accentChroma = 0.078f,
+                harmony = ThemeHarmony.ANALOGOUS, tintChroma = 0.115f,
                 secondaryHueShift = 34f, neutralChroma = 0.019f,
                 // The strongest elevation tint in the set, which is the idea this
                 // preset is named for. It is also what a fresh install opens on,
@@ -434,6 +646,7 @@ data class ThemeRecipe(
                 // has to carry the whole design on its own.
                 id = ThemeId.OBSIDIAN, family = ThemeFamily.NEUTRAL,
                 accentHue = 264f, accentChroma = 0.013f,
+                harmony = ThemeHarmony.MONOCHROME, tintChroma = 0.055f,
                 secondaryHueShift = 0f, accentSpread = 0f, neutralChroma = 0.005f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.FLAT.copy(borderAlpha = 0.7f),
@@ -446,6 +659,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.SLATE, family = ThemeFamily.NEUTRAL,
                 accentHue = 236f, accentChroma = 0.068f,
+                harmony = ThemeHarmony.ANALOGOUS, tintChroma = 0.105f,
                 secondaryHueShift = -24f, neutralHue = 240f, neutralChroma = 0.023f,
                 // Hard corners and a real shadow: a tool rather than a toy.
                 material = ThemeMaterial(
@@ -458,6 +672,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.LINEN, family = ThemeFamily.NEUTRAL,
                 accentHue = 76f, accentChroma = 0.064f,
+                harmony = ThemeHarmony.ANALOGOUS, tintChroma = 0.1f,
                 secondaryHueShift = 62f, neutralHue = 78f, neutralChroma = 0.021f,
                 // Visible grain and a short, soft shadow: paper stock lying on
                 // paper stock, not a card floating over a page.
@@ -476,6 +691,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.EMBER, family = ThemeFamily.WARM,
                 accentHue = 44f, accentChroma = 0.155f,
+                harmony = ThemeHarmony.SPLIT, tintChroma = 0.145f,
                 secondaryHueShift = -20f, neutralHue = 52f, neutralChroma = 0.023f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.GLASS,
@@ -487,6 +703,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.CITRINE, family = ThemeFamily.WARM,
                 accentHue = 88f, accentChroma = 0.145f,
+                harmony = ThemeHarmony.TRIADIC, tintChroma = 0.15f,
                 secondaryHueShift = -32f, neutralHue = 84f, neutralChroma = 0.021f,
                 // Opaque tiles with generous shadows under them, and no blur to
                 // pay for: the one theme in the set built for a weak GPU.
@@ -504,6 +721,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.SAKURA, family = ThemeFamily.WARM,
                 accentHue = 355f, accentChroma = 0.118f,
+                harmony = ThemeHarmony.ANALOGOUS, tintChroma = 0.115f,
                 secondaryHueShift = 26f, neutralHue = 350f, neutralChroma = 0.021f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.3f),
@@ -516,6 +734,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.VAPOR, family = ThemeFamily.WARM,
                 accentHue = 335f, accentChroma = 0.2f,
+                harmony = ThemeHarmony.COMPLEMENTARY, tintChroma = 0.185f,
                 // Magenta furniture, cyan cursor: the two-colour clash is the
                 // whole theme, so the cursor is thrown to the far side of the
                 // wheel rather than sitting beside the accent.
@@ -537,6 +756,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.NOCTURNE, family = ThemeFamily.COOL,
                 accentHue = 256f, accentChroma = 0.135f,
+                harmony = ThemeHarmony.TETRADIC, tintChroma = 0.14f,
                 secondaryHueShift = 46f, neutralHue = 262f, neutralChroma = 0.025f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.GLASS,
@@ -548,6 +768,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.AURORA, family = ThemeFamily.COOL,
                 accentHue = 168f, accentChroma = 0.14f,
+                harmony = ThemeHarmony.TRIADIC, tintChroma = 0.145f,
                 secondaryHueShift = 76f, neutralHue = 176f, neutralChroma = 0.025f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.28f),
@@ -560,6 +781,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.ORCHID, family = ThemeFamily.COOL,
                 accentHue = 302f, accentChroma = 0.15f,
+                harmony = ThemeHarmony.SPLIT, tintChroma = 0.15f,
                 secondaryHueShift = 42f, neutralHue = 298f, neutralChroma = 0.027f,
                 material = ThemeMaterial(
                     surface = SurfaceTreatment.GLASS,
@@ -572,6 +794,7 @@ data class ThemeRecipe(
             ThemeRecipe(
                 id = ThemeId.TERMINAL, family = ThemeFamily.COOL,
                 accentHue = 148f, accentChroma = 0.19f,
+                harmony = ThemeHarmony.MONOCHROME, tintChroma = 0.155f,
                 secondaryHueShift = 50f, neutralHue = 150f, neutralChroma = 0.028f,
                 // Square, hard-edged, heavily grained and unblurred. The only
                 // theme in the set with a zero corner radius, and it means it.
@@ -582,6 +805,64 @@ data class ThemeRecipe(
                 ),
                 motion = MotionStyle.MECHANICAL,
                 defaultWallpaper = AnimatedWallpaper.PARTICLES,
+            ),
+
+            // ---- Multi-colour ----------------------------------------------
+            /*
+             * The three themes that could not be written before harmonies.
+             *
+             * Every other theme in this list is one hue with its neighbours, and
+             * that was not a stylistic consensus — it was the only thing the
+             * generator could express. These are here to prove the shelf is real:
+             * a launcher whose twelve category tiles are twelve colours, one
+             * whose two are set against each other, and one built on three.
+             */
+            ThemeRecipe(
+                // The whole wheel. Every icon tile on every page is a different
+                // colour, and the accent is only where the wheel starts.
+                id = ThemeId.PRISM, family = ThemeFamily.MULTI,
+                accentHue = 262f, accentChroma = 0.14f,
+                harmony = ThemeHarmony.SPECTRUM, tintChroma = 0.165f,
+                secondaryHueShift = 120f, accentSpread = 44f,
+                neutralHue = 268f, neutralChroma = 0.014f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.07f),
+                    cornerRadiusDp = 18, surfaceAlpha = 0.95f, blurRadiusDp = 16,
+                    grain = 0.03f, backgroundDepth = 0.08f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.MESH,
+            ),
+            ThemeRecipe(
+                // Two colours and nothing between them. Teal furniture, coral
+                // everything-that-matters — and because the harmony is
+                // complementary, every tile in the app lands on one or the other.
+                id = ThemeId.DUOTONE, family = ThemeFamily.MULTI,
+                accentHue = 194f, accentChroma = 0.152f,
+                harmony = ThemeHarmony.COMPLEMENTARY, tintChroma = 0.16f,
+                secondaryHueShift = 180f, accentSpread = 12f,
+                neutralHue = 200f, neutralChroma = 0.022f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.FLAT.copy(borderAlpha = 0.65f),
+                    cornerRadiusDp = 8, surfaceAlpha = 0.97f, blurRadiusDp = 0,
+                    grain = 0.05f, backgroundDepth = 0.1f,
+                ),
+                motion = MotionStyle.SNAPPY,
+                defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
+            ),
+            ThemeRecipe(
+                // Three, evenly spaced, at a chroma the others would not dare.
+                id = ThemeId.CARNIVAL, family = ThemeFamily.MULTI,
+                accentHue = 22f, accentChroma = 0.185f,
+                harmony = ThemeHarmony.TRIADIC, tintChroma = 0.185f,
+                secondaryHueShift = 120f, accentSpread = 26f,
+                neutralHue = 18f, neutralChroma = 0.026f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.26f),
+                    cornerRadiusDp = 22, surfaceAlpha = 0.89f, blurRadiusDp = 26,
+                    grain = 0.045f, backgroundDepth = 0.19f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.BOKEH,
             ),
 
             // ---- Editor ----------------------------------------------------
@@ -605,6 +886,7 @@ data class ThemeRecipe(
                 // accent #61AFEF.
                 id = ThemeId.ONE_DARK, family = ThemeFamily.EDITOR,
                 accentHue = 245f, accentChroma = 0.121f,
+                harmony = ThemeHarmony.SPECTRUM, tintChroma = 0.125f,
                 secondaryHueShift = 66f, accentSpread = 16f,
                 neutralHue = 254f, neutralChroma = 0.0204f,
                 groundShift = 0.142f,
@@ -620,6 +902,7 @@ data class ThemeRecipe(
                 // its blue #82AAFF as the secondary.
                 id = ThemeId.PALENIGHT, family = ThemeFamily.EDITOR,
                 accentHue = 311f, accentChroma = 0.1345f,
+                harmony = ThemeHarmony.SPECTRUM, tintChroma = 0.13f,
                 secondaryHueShift = -60f, accentSpread = 18f,
                 neutralHue = 274f, neutralChroma = 0.0369f,
                 groundShift = 0.143f,
@@ -799,10 +1082,40 @@ data class ThemeSpec(
     val motion: MotionStyle,
     val surface: SurfaceTreatment,
     val backgroundDepth: Float,
+    /**
+     * The twelve category colours, indexed by [AccentSlot.ordinal].
+     *
+     * A list rather than a map because it is read once per icon tile and there
+     * are a lot of icon tiles. See [ThemeRecipe.resolveTints].
+     */
+    val tintsArgb: List<Long> = emptyList(),
 ) {
     /** Unique across bundled and custom themes alike. See [ThemeRecipe.key]. */
     val key: String get() = customId ?: id.name
+
+    /** The colour this theme paints [slot] with, falling back to the accent. */
+    fun tint(slot: AccentSlot): Long = tintsArgb.getOrElse(slot.ordinal) { primaryArgb }
 }
+
+/**
+ * The shorter way round the wheel between two hues, in degrees.
+ *
+ * Degrees are circular, so 350 and 10 are twenty apart rather than three hundred
+ * and forty. Getting this wrong is the classic hue bug and it fails quietly — the
+ * palette still renders, it just snaps half its slots to the wrong side.
+ */
+internal fun Float.arcTo(other: Float): Float {
+    val diff = kotlin.math.abs((this - other).mod(360f))
+    return minOf(diff, 360f - diff)
+}
+
+/**
+ * How far apart slots sharing one hue are pushed in lightness.
+ *
+ * Enough that twelve tiles on one page are not one tile twelve times; small
+ * enough that they still read as a family. See [ThemeRecipe.resolveTints].
+ */
+private const val TINT_LIGHTNESS_SPREAD = 0.26f
 
 /**
  * The four surface lightnesses, ground first.
@@ -929,8 +1242,16 @@ private const val ACCENT_END_LIFT = 0.09f
  * measured from the *far* end of the ramp rather than from the base surface, so
  * the outline is guaranteed to read on every panel rather than only on the one it
  * was measured against.
+ *
+ * Above the floor `ThemeSpecTest` enforces rather than equal to it, and the
+ * margin is not slack: this lightness is requested in OKLCH and then quantised
+ * to 8-bit sRGB, and how much of it survives depends on where the outline's hue
+ * and chroma land in that grid. Duotone lost enough of a 0.02 step to fall under
+ * a 0.018 floor — the ramp was correct and the rounding was not. Widening the
+ * step here fixes it for every palette rather than for the one that was caught,
+ * and 0.002 of lightness is not a difference anybody can see.
  */
-private const val DARK_OUTLINE_STEP = 0.02f
+private const val DARK_OUTLINE_STEP = 0.024f
 
 /**
  * And on a light ground, where it has to be much further.

@@ -43,6 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -202,6 +205,7 @@ private fun Header(state: FilesUiState, actions: FileBrowserActions) {
                  */
                 HeaderButton(
                     icon = Icons.Rounded.SwapVert,
+                    label = "Change sort order",
                     active = false,
                     onClick = { actions.onPerformAction(FileAction.SORT) },
                 )
@@ -212,10 +216,12 @@ private fun Header(state: FilesUiState, actions: FileBrowserActions) {
                         Icons.Rounded.VisibilityOff
                     },
                     active = state.showHidden,
+                    label = if (state.showHidden) "Hide hidden files" else "Show hidden files",
                     onClick = { actions.onPerformAction(FileAction.HIDDEN) },
                 )
                 HeaderButton(
                     icon = Icons.Rounded.MoreVert,
+                    label = "File actions",
                     active = state.pane == FilesPane.ACTIONS,
                     onClick = { actions.onFocusAction(0) },
                 )
@@ -236,9 +242,16 @@ private fun Header(state: FilesUiState, actions: FileBrowserActions) {
 private fun Breadcrumbs(state: FilesUiState, actions: FileBrowserActions) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val animationsEnabled = ThorTheme.materials.animationsEnabled
     val scroll = rememberScrollState()
 
-    LaunchedEffect(state.path) { scroll.animateScrollTo(scroll.maxValue) }
+    LaunchedEffect(state.path) {
+        if (animationsEnabled) {
+            scroll.animateScrollTo(scroll.maxValue)
+        } else {
+            scroll.scrollTo(scroll.maxValue)
+        }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(scroll),
@@ -264,7 +277,7 @@ private fun Breadcrumbs(state: FilesUiState, actions: FileBrowserActions) {
                 maxLines = 1,
                 modifier = Modifier
                     .clip(ThorTheme.shapes.small)
-                    .clickable { actions.onOpenCrumb(crumb.path) }
+                    .clickable(role = Role.Button) { actions.onOpenCrumb(crumb.path) }
                     .padding(horizontal = dimens.spacingTiny, vertical = 2.dp),
             )
         }
@@ -343,7 +356,12 @@ private fun StatsCard(state: FilesUiState) {
 }
 
 @Composable
-private fun HeaderButton(icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+private fun HeaderButton(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
 
@@ -352,12 +370,13 @@ private fun HeaderButton(icon: ImageVector, active: Boolean, onClick: () -> Unit
             .size(HEADER_BUTTON.dp)
             .clip(shape)
             .background(if (active) colors.cursor.copy(alpha = ACTIVE_ALPHA) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .semantics { selected = active }
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = label,
             tint = if (active) colors.cursor else colors.onSurfaceVariant,
             modifier = Modifier.size(HEADER_BUTTON_GLYPH.dp),
         )
@@ -515,7 +534,7 @@ private fun ShortcutRow(
             .clip(shape)
             .background(if (lit) colors.cursor.copy(alpha = ACTIVE_ALPHA) else Color.Transparent)
             .thorCursor(focused = focused, shape = shape)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(dimens.spacingSmall),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
@@ -544,6 +563,7 @@ private fun ShortcutRow(
 @Composable
 private fun Listing(state: FilesUiState, actions: FileBrowserActions) {
     val dimens = ThorTheme.dimens
+    val animationsEnabled = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val inListing = state.pane != FilesPane.SHORTCUTS
 
@@ -615,7 +635,8 @@ private fun Listing(state: FilesUiState, actions: FileBrowserActions) {
 
         when {
             distance == 0 -> Unit
-            kotlin.math.abs(distance) <= rowHeight * SMOOTH_ROWS ->
+            animationsEnabled &&
+                kotlin.math.abs(distance) <= rowHeight * SMOOTH_ROWS ->
                 listState.animateScrollBy(distance.toFloat())
 
             else -> listState.scrollBy(distance.toFloat())
@@ -670,7 +691,7 @@ private fun FileRow(
                 },
             )
             .thorCursor(focused = focused, shape = shape)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = dimens.spacing, vertical = dimens.spacingSmall),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
@@ -688,6 +709,7 @@ private fun FileRow(
             icon = if (marked) Icons.Rounded.CheckCircle else entry.kind.glyph(),
             size = ROW_TILE,
             glyph = ROW_GLYPH,
+            accessibilityLabel = if (marked) "Unmark ${entry.name}" else "Mark ${entry.name}",
             onClick = onMarkTapped,
         )
 
@@ -760,6 +782,7 @@ internal fun AccentTile(
     icon: ImageVector,
     size: Int,
     glyph: Int = size / 2,
+    accessibilityLabel: String? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val colors = ThorTheme.colors
@@ -770,12 +793,22 @@ internal fun AccentTile(
             .size(size.dp)
             .clip(shape)
             .background(colors.cursor.copy(alpha = TILE_ALPHA))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        onClickLabel = accessibilityLabel,
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = accessibilityLabel,
             tint = colors.cursor,
             modifier = Modifier.size(glyph.dp),
         )
@@ -961,7 +994,7 @@ internal fun FilesButton(
             .clip(shape)
             .background(if (focused) tint.copy(alpha = 0.22f) else colors.surfaceElevated)
             .thorCursor(focused = focused, shape = shape)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = ThorTheme.dimens.spacingSmall),
         contentAlignment = Alignment.Center,
     ) {

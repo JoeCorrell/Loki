@@ -1,5 +1,13 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.runtime.Composable
 import com.thor.core.model.ThorSettings
 import com.thor.data.achievements.AchievementSyncState
@@ -33,6 +41,7 @@ internal fun AchievementsPage(
 
     SwitchRow(
         title = "RetroAchievements",
+        icon = Icons.Rounded.EmojiEvents,
         subtitle = if (account.isConfigured) {
             "Show achievement progress on the game panel"
         } else {
@@ -46,6 +55,7 @@ internal fun AchievementsPage(
     RowDivider()
     ActionRow(
         title = "Match my library",
+        icon = Icons.Rounded.Sync,
         subtitle = when (syncState) {
             is AchievementSyncState.Running ->
                 if (syncState.total > 0) {
@@ -80,6 +90,7 @@ internal fun AchievementsPage(
     RowDivider()
     ActionRow(
         title = "Check connection",
+        icon = Icons.Rounded.NetworkCheck,
         subtitle = status.describe(),
         focused = focusedRow == 2,
         trailingLabel = if (checking) "Checking…" else "Check",
@@ -89,6 +100,7 @@ internal fun AchievementsPage(
     RowDivider()
     SwitchRow(
         title = "Hardcore only",
+        icon = Icons.Rounded.Whatshot,
         subtitle = "Count only achievements earned without save states or rewind",
         checked = account.hardcoreOnly,
         focused = focusedRow == 3,
@@ -100,6 +112,7 @@ internal fun AchievementsPage(
     RowDivider()
     TextFieldRow(
         title = "Username",
+        icon = Icons.Rounded.Person,
         subtitle = "Your RetroAchievements account name",
         value = account.username,
         focused = focusedRow == 4,
@@ -111,6 +124,7 @@ internal fun AchievementsPage(
     RowDivider()
     TextFieldRow(
         title = "Web API key",
+        icon = Icons.Rounded.Key,
         subtitle = "Found on retroachievements.org under Settings → Keys. " +
             "This is not your password, and resetting it changes nothing else.",
         value = account.apiKey,
@@ -124,6 +138,7 @@ internal fun AchievementsPage(
     RowDivider()
     ActionRow(
         title = "Forget matches",
+        icon = Icons.Rounded.DeleteSweep,
         subtitle = "Clears every stored match so the next run resolves from scratch",
         focused = focusedRow == 6,
         trailingLabel = "Forget",

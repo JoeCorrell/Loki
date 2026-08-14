@@ -317,19 +317,23 @@ private fun TypedText(text: String) {
     val dimens = ThorTheme.dimens
     val animate = ThorTheme.materials.animationsEnabled
 
-    val transition = rememberInfiniteTransition(label = "caret")
-    val caretAlpha by transition.animateFloat(
-        // Both ends at full when motion is reduced, so the caret is simply solid.
-        // Driving a constant target rather than skipping the call keeps the slot
-        // table the same shape whatever the accessibility setting says.
-        initialValue = if (animate) 0f else 1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = CARET_PERIOD_MS, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "caretAlpha",
-    )
+    val caretAlpha = if (animate) {
+        val transition = rememberInfiniteTransition(label = "caret")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = ThorTheme.motion.scaledDuration(CARET_PERIOD_MS),
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "caretAlpha",
+        ).value
+    } else {
+        1f
+    }
 
     Row(
         modifier = Modifier

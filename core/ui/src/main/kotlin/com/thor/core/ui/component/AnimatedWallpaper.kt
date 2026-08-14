@@ -61,6 +61,7 @@ fun AnimatedWallpaperBackground(
 ) {
     val colors = ThorTheme.colors
     val spec = ThorTheme.spec
+    val motion = ThorTheme.motion
     val animate = ThorTheme.materials.animationsEnabled
 
     /*
@@ -85,7 +86,7 @@ fun AnimatedWallpaperBackground(
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(
-                    durationMillis = wallpaper.periodMillis,
+                    durationMillis = motion.scaledDuration(wallpaper.periodMillis),
                     easing = LinearEasing,
                 ),
                 repeatMode = if (wallpaper.pingPongs) RepeatMode.Reverse else RepeatMode.Restart,
@@ -101,7 +102,9 @@ fun AnimatedWallpaperBackground(
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(
-                    durationMillis = (wallpaper.periodMillis * DRIFT_PERIOD_RATIO).toInt(),
+                    durationMillis = motion.scaledDuration(
+                        (wallpaper.periodMillis * DRIFT_PERIOD_RATIO).toInt(),
+                    ),
                     easing = LinearEasing,
                 ),
                 repeatMode = RepeatMode.Reverse,

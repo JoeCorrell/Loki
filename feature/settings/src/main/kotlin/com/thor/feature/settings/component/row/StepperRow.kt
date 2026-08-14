@@ -38,6 +38,8 @@ import com.thor.core.ui.pointer.rememberPointerHover
 fun StepperRow(
     title: String,
     subtitle: String? = null,
+    /** The glyph in the row's tile; null draws the plain marker instead. */
+    icon: ImageVector? = null,
     value: String,
     focused: Boolean = false,
     canDecrease: Boolean = true,
@@ -65,6 +67,7 @@ fun StepperRow(
     }
 
     SettingsRowShell(
+        icon = icon,
         title = title,
         subtitle = subtitle,
         focused = focused,

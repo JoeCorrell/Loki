@@ -1,5 +1,16 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Loop
+import androidx.compose.material.icons.rounded.Mouse
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +48,7 @@ internal fun PointerPage(
 
     SwitchRow(
         title = "Controller pointer",
+        icon = Icons.Rounded.Mouse,
         subtitle = "Hold Start and Select to raise a cursor. Works inside Loki " +
             "straight away; see below to use it in other apps.",
         checked = mouse.enabled,
@@ -64,6 +76,7 @@ internal fun PointerPage(
      */
     ActionRow(
         title = "Use the pointer in other apps",
+        icon = Icons.Rounded.OpenInNew,
         subtitle = when {
             pointerRunning ->
                 "Working. The pointer can be used in games and apps."
@@ -85,6 +98,7 @@ internal fun PointerPage(
 
     IntSliderRow(
         title = "Pointer speed",
+        icon = Icons.Rounded.Speed,
         subtitle = "Pixels per second at full stick",
         value = mouse.speed.toInt(),
         range = SPEED_RANGE,
@@ -96,6 +110,7 @@ internal fun PointerPage(
     RowDivider()
     SwitchRow(
         title = "Cross between screens",
+        icon = Icons.Rounded.SwapHoriz,
         subtitle = "Moving off the bottom of one panel continues onto the other",
         checked = mouse.spanDisplays,
         focused = focusedRow == 4,
@@ -136,6 +151,7 @@ internal fun NavigationPage(settings: ThorSettings, focusedRow: Int, viewModel: 
 
     SwitchRow(
         title = "Wrap at edges",
+        icon = Icons.Rounded.Loop,
         subtitle = "Moving past the last column returns to the first",
         checked = controls.wrapNavigation,
         focused = focusedRow == 0,
@@ -144,6 +160,7 @@ internal fun NavigationPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     SwitchRow(
         title = "Edge turns the page",
+        icon = Icons.Rounded.AutoStories,
         checked = controls.edgeFlipsPage,
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateControls { it.copy(edgeFlipsPage = on) } },
@@ -160,6 +177,7 @@ internal fun NavigationPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     SwitchRow(
         title = "Touch input",
+        icon = Icons.Rounded.TouchApp,
         subtitle = "Off makes the launcher controller-only",
         checked = controls.touchEnabled,
         focused = focusedRow == 3,
@@ -174,6 +192,7 @@ internal fun FeedbackPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
 
     SwitchRow(
         title = "Haptics",
+        icon = Icons.Rounded.Vibration,
         checked = controls.hapticsEnabled,
         focused = focusedRow == 0,
         onCheckedChange = { on -> viewModel.updateControls { it.copy(hapticsEnabled = on) } },
@@ -190,6 +209,7 @@ internal fun FeedbackPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     RowDivider()
     SwitchRow(
         title = "Sound effects",
+        icon = Icons.Rounded.VolumeUp,
         subtitle = "Plays at the system media volume",
         checked = audio.soundEffectsEnabled,
         focused = focusedRow == 2,
@@ -200,6 +220,7 @@ internal fun FeedbackPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     RowDivider()
     SwitchRow(
         title = "Navigation sounds",
+        icon = Icons.Rounded.MusicNote,
         subtitle = "Cursor ticks and page turns, not just launches",
         checked = audio.navigationSounds,
         focused = focusedRow == 3,

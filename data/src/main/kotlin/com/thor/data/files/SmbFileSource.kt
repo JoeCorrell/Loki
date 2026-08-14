@@ -18,6 +18,7 @@ import kotlinx.coroutines.ensureActive
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.UnknownHostException
+import java.util.Locale
 import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -201,10 +202,10 @@ class SmbFileSource @Inject constructor(
     override suspend fun isDirectory(path: String): Boolean =
         withFile(path) { it.isDirectory } ?: false
 
-    override suspend fun children(path: String): List<String> =
+    override suspend fun children(path: String): List<String>? =
         withFile(directoryUrl(path)) { file ->
-            file.listFiles()?.map { it.normalisedPath() }.orEmpty()
-        }.orEmpty()
+            file.listFiles()?.map { it.normalisedPath() }
+        }
 
     /**
      * Bytes underneath, which on a share costs a listing per directory.
@@ -265,13 +266,15 @@ class SmbFileSource @Inject constructor(
             val context = contextFor(from) ?: return false
             val source = SmbFile(from, context)
             val destination = SmbFile(if (source.isDirectory) directoryUrl(to) else to, context)
+            if (!source.exists() || destination.exists()) return@runCatching false
             source.renameTo(destination)
             true
         }.getOrDefault(false)
     }
 
     /** The URL is already canonical; only the trailing slash varies. */
-    override suspend fun identityOf(path: String): String = path.trimEnd('/')
+    override suspend fun identityOf(path: String): String =
+        path.trimEnd('/').lowercase(Locale.ROOT)
 
     // ---- Reaching a server -------------------------------------------------
 

@@ -70,8 +70,14 @@ interface FileSource {
 
     suspend fun isDirectory(path: String): Boolean
 
-    /** Child paths, or empty when [path] is not a readable directory. */
-    suspend fun children(path: String): List<String>
+    /**
+     * Child paths, or null when [path] cannot be read as a directory.
+     *
+     * Empty and unreadable must stay different. Treating an I/O failure as an
+     * empty folder lets a move copy an empty shell and then delete the populated
+     * source, which is data loss.
+     */
+    suspend fun children(path: String): List<String>?
 
     /** Total bytes underneath [path], for a progress denominator. */
     suspend fun sizeOnDisk(path: String): Long

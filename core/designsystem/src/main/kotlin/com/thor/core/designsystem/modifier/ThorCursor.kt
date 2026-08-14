@@ -1,50 +1,27 @@
 package com.thor.core.designsystem.modifier
 
-import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.geometry.Size
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.Dp
-import androidx.compose.runtime.getValue
 import com.thor.core.designsystem.theme.ThorTheme
-import androidx.compose.runtime.getValue
 import com.thor.core.model.CursorAnimation
-import androidx.compose.runtime.getValue
 import com.thor.core.model.CursorStyle
 
 /**
@@ -81,7 +58,8 @@ fun Modifier.thorCursor(
 ): Modifier {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
-    val motionEnabled = ThorTheme.materials.animationsEnabled
+    val motion = ThorTheme.motion
+    val motionEnabled = ThorTheme.materials.animationsEnabled && !motion.reduceMotion
 
     if (!focused) return this
 
@@ -97,10 +75,10 @@ fun Modifier.thorCursor(
             animationSpec = infiniteRepeatable(
                 animation = tween(
                     durationMillis = when (animation) {
-                        CursorAnimation.PULSE -> 900
-                        CursorAnimation.SHIMMER -> 1600
-                        CursorAnimation.ROTATE -> 2400
-                        else -> 1800
+                        CursorAnimation.PULSE -> motion.scaledDuration(900)
+                        CursorAnimation.SHIMMER -> motion.scaledDuration(1600)
+                        CursorAnimation.ROTATE -> motion.scaledDuration(2400)
+                        else -> motion.scaledDuration(1800)
                     },
                 ),
                 repeatMode = RepeatMode.Reverse,

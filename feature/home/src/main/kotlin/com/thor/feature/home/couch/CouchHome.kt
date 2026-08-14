@@ -5,7 +5,6 @@ import android.os.StatFs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -68,6 +67,8 @@ import com.thor.core.model.ShortcutAction
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
+import com.thor.core.ui.motion.revealBy
+import com.thor.core.ui.motion.revealItem
 import com.thor.feature.home.LauncherUiState
 import com.thor.feature.home.shell.icon
 import java.util.Locale
@@ -793,6 +794,7 @@ private fun CouchGamesShelf(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
 
     LaunchedEffect(rail?.id, focusedItem) {
@@ -817,7 +819,7 @@ private fun CouchGamesShelf(
         val visible = layout.visibleItemsInfo.firstOrNull { it.index == focusedItem }
         if (visible == null) {
             // Nowhere near the viewport, so there is no overhang to measure.
-            listState.animateScrollToItem(focusedItem)
+            listState.revealItem(focusedItem, animate = animateMotion)
             return@LaunchedEffect
         }
         // Against the inset edges rather than the row's own, so a card comes to
@@ -832,7 +834,7 @@ private fun CouchGamesShelf(
             end > trailing -> end - trailing
             else -> 0
         }
-        if (overhang != 0) listState.animateScrollBy(overhang.toFloat())
+        if (overhang != 0) listState.revealBy(overhang.toFloat(), animate = animateMotion)
     }
 
     Column(modifier = modifier.padding(top = SHELF_HEADER_GAP.dp)) {

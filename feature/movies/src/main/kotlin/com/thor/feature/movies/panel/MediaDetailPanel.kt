@@ -46,6 +46,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.CacheStatus
 import com.thor.core.model.Episode
 import com.thor.core.model.MediaItem
@@ -303,11 +304,14 @@ private fun SeriesSelector(
         ?.episodes
         .orEmpty()
     val selectedSeason = seasons.firstOrNull { it.number == detail.selectedSeason }
+    val animateMotion = ThorTheme.materials.animationsEnabled
     var seasonMenuExpanded by remember(item.id.key) { mutableStateOf(false) }
 
     LaunchedEffect(item.id.key, detail.selectedSeason, detail.selectedEpisode, episodes) {
         val selectedIndex = episodes.indexOfFirst { it.number == detail.selectedEpisode }
-        if (selectedIndex >= 0) episodeListState.animateScrollToItem(selectedIndex)
+        if (selectedIndex >= 0) {
+            episodeListState.revealItem(selectedIndex, animate = animateMotion)
+        }
     }
 
     Column(
@@ -755,10 +759,14 @@ private fun SourceColumn(
         null
     }
     val listState = rememberLazyListState()
+    val animateMotion = ThorTheme.materials.animationsEnabled
 
     LaunchedEffect(focusedIndex) {
         if (focusedIndex != null && ranked.isNotEmpty()) {
-            listState.animateScrollToItem(focusedIndex.coerceIn(0, ranked.lastIndex))
+            listState.revealItem(
+                focusedIndex.coerceIn(0, ranked.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 

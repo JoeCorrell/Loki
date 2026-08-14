@@ -22,8 +22,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.feature.settings.component.panel.GroupCard
+import com.thor.feature.settings.component.panel.GroupHeading
+import com.thor.feature.settings.component.panel.RowSurface
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 
@@ -42,93 +46,48 @@ fun SettingsSection(
     description: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
-    val shape = ThorTheme.shapes.panel
 
-    Column(
-        modifier = modifier
-            .padding(top = dimens.spacingSmall, bottom = dimens.spacing)
-            .clip(shape)
-            .background(
-                colors.surface.copy(alpha = 0.58f),
-            )
-            .padding(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 4.dp, height = if (description == null) 20.dp else 34.dp)
-                    .clip(ThorTheme.shapes.pill)
-                    .background(colors.cursor),
-            )
-            Column {
-                Text(
-                    text = title.uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = colors.onBackground,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (description != null) {
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        Column(content = content)
+    /*
+     * A heading, then one card holding every row in the group.
+     *
+     * This drew each row as its own rounded, bordered card with a gap between —
+     * which reads as a stack of separate objects rather than as a group, and
+     * puts two borders and two corner radii between neighbouring settings that
+     * belong together. One card with hairlines inside it is the same
+     * information with an order of magnitude less furniture.
+     */
+    Column(modifier = modifier.padding(top = dimens.spacingSmall, bottom = dimens.spacing)) {
+        GroupHeading(title = title, description = description)
+        GroupCard(content = content)
     }
 }
 
-/** Hairline separator between rows. */
+/**
+ * Kept as a no-op, and called from every page.
+ *
+ * Rows draw their own hairline now — see `RowSurface` — so a spacer here would
+ * reopen the gaps the group card exists to close. Left in place rather than
+ * deleted because it is called several hundred times across seventeen page
+ * files, and removing it would be a mechanical edit with no visible result.
+ */
 @Composable
-fun RowDivider() {
-    Spacer(modifier = Modifier.height(8.dp))
-}
+fun RowDivider() = Unit
 
-/** Raised option surface shared by every inner settings page. */
+/**
+ * The surface every settings row sits on.
+ *
+ * Delegates rather than reimplementing, so a row here and a row on any other
+ * panel are the same object: flat, edge to edge, and separated from its
+ * neighbour by a hairline it draws itself rather than by a border and a gap.
+ */
 @Composable
 fun SettingsCard(
     focused: Boolean,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
-) {
-    val colors = ThorTheme.colors
-    val hover = rememberPointerHover()
-    val lit = focused || (onClick != null && hover.isHovered)
-    val shape = ThorTheme.shapes.panel
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .revealWhenFocused(focused)
-            .clip(shape)
-            .background(
-                if (lit) {
-                    colors.surfaceHighest.copy(alpha = 0.94f)
-                } else {
-                    colors.surfaceElevated.copy(alpha = 0.66f)
-                },
-            )
-            .border(
-                width = if (lit) 1.5.dp else 1.dp,
-                color = if (lit) colors.cursor.copy(alpha = 0.72f)
-                else colors.outline.copy(alpha = 0.24f),
-                shape = shape,
-            )
-            .pointerHover(hover)
-            .thorCursor(focused = lit, shape = shape)
-            .let { card -> if (onClick != null) card.clickable(onClick = onClick) else card },
-        content = content,
-    )
-}
+) = RowSurface(focused = focused, modifier = modifier, onClick = onClick, content = content)
 
 /** A section heading used outside a [SettingsSection]. */
 @Composable
@@ -149,8 +108,9 @@ fun SectionHeader(text: String) {
         Text(
             text = text.uppercase(),
             style = MaterialTheme.typography.labelLarge,
-            color = colors.onBackground,
+            color = colors.cursor,
             fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
         )
     }
 }

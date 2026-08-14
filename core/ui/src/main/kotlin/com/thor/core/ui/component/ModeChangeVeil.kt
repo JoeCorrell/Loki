@@ -1,8 +1,6 @@
 package com.thor.core.ui.component
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -44,6 +42,7 @@ fun ModeChangeVeil(
     modifier: Modifier = Modifier,
     accent: Color = ThorTheme.colors.cursor,
 ) {
+    val motion = ThorTheme.motion
     val motionEnabled = ThorTheme.materials.animationsEnabled
     val progress = remember { Animatable(0f) }
 
@@ -58,8 +57,8 @@ fun ModeChangeVeil(
         }
         if (!motionEnabled) return@LaunchedEffect
         progress.snapTo(0f)
-        progress.animateTo(1f, tween(SWEEP_MS, easing = LinearOutSlowInEasing))
-        progress.animateTo(0f, tween(CLEAR_MS, easing = LinearOutSlowInEasing))
+        progress.animateTo(1f, motion.tweenSpec(motion.scaledDuration(SWEEP_MS)))
+        progress.animateTo(0f, motion.tweenSpec(motion.scaledDuration(CLEAR_MS)))
     }
 
     val value = progress.value

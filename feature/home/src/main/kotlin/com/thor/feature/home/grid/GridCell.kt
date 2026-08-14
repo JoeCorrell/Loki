@@ -134,13 +134,16 @@ fun GridCell(
     // edit mode looked like it had done nothing.
     // A grid can have dozens of cells. Keeping an inactive infinite transition
     // in each one leaves the frame clock busy even when arrange mode is closed.
-    val wobble = if (jiggling) {
+    val wobble = if (jiggling && ThorTheme.materials.animationsEnabled) {
         val wobbleTransition = rememberInfiniteTransition(label = "wobble")
         val value by wobbleTransition.animateFloat(
             initialValue = -JIGGLE_DEGREES,
             targetValue = JIGGLE_DEGREES,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = JIGGLE_PERIOD_MS, easing = LinearEasing),
+                animation = tween(
+                    durationMillis = motion.scaledDuration(JIGGLE_PERIOD_MS),
+                    easing = LinearEasing,
+                ),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "wobbleAngle",

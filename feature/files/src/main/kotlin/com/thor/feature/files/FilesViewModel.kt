@@ -788,9 +788,15 @@ class FilesViewModel @Inject constructor(
     private fun cancelTransfer() {
         transferJob?.cancel()
         transferJob = null
-        // The bar going away is the report. A cancelled copy is not a failure.
-        _state.update { it.copy(transfer = null) }
-        reload()
+        _state.update { current ->
+            current.copy(transfer = current.transfer?.copy(label = "Cancelling…"))
+        }
+        /*
+         * Repository cancellation now includes non-cancellable cleanup of its
+         * staging item. The job's finally block clears the bar and reloads only
+         * after that cleanup; reloading here raced it and briefly exposed the
+         * incomplete hidden item to listings that show hidden files.
+         */
     }
 
     // ---- Prompts -----------------------------------------------------------

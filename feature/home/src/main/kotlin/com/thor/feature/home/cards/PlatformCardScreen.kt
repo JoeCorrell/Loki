@@ -1,7 +1,6 @@
 package com.thor.feature.home.cards
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -94,11 +93,13 @@ fun PlatformCardScreen(
                  */
                 val from = if (stepDirection >= 0) 1 else -1
                 (
-                    slideInHorizontally(tween(motion.panelMillis)) { width -> from * width / SLIDE_DIVISOR } +
-                        fadeIn(tween(motion.panelMillis))
+                    slideInHorizontally(motion.tweenSpec(motion.panelMillis)) { width ->
+                        from * width / SLIDE_DIVISOR
+                    } + fadeIn(motion.tweenSpec(motion.panelMillis))
                     ) togetherWith (
-                    slideOutHorizontally(tween(motion.panelMillis)) { width -> -from * width / SLIDE_DIVISOR } +
-                        fadeOut(tween(motion.panelMillis))
+                    slideOutHorizontally(motion.tweenSpec(motion.panelMillis)) { width ->
+                        -from * width / SLIDE_DIVISOR
+                    } + fadeOut(motion.tweenSpec(motion.panelMillis))
                     )
             },
             label = "platform-card",

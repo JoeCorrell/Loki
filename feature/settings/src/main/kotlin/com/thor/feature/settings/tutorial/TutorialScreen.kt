@@ -71,6 +71,7 @@ fun TutorialScreen(
     val step = steps[index.coerceIn(0, steps.lastIndex)]
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val motion = ThorTheme.motion
     val isLast = index == steps.lastIndex
 
     /*
@@ -165,7 +166,10 @@ fun TutorialScreen(
 
                 AnimatedContent(
                     targetState = index,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    transitionSpec = {
+                        fadeIn(motion.tweenSpec(motion.detailMillis)) togetherWith
+                            fadeOut(motion.tweenSpec(motion.detailMillis))
+                    },
                     label = "tutorial-step",
                     modifier = Modifier.heightIn(max = textMaxHeight),
                 ) { current ->
@@ -246,16 +250,20 @@ private fun Spotlight(spot: TutorialSpot) {
     if (spot == TutorialSpot.NONE) return
 
     val colors = ThorTheme.colors
-    val transition = rememberInfiniteTransition(label = "spotlight")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = PULSE_MS),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "spotlight-pulse",
-    )
+    val pulse = if (ThorTheme.materials.animationsEnabled) {
+        val transition = rememberInfiniteTransition(label = "spotlight")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = ThorTheme.motion.scaledDuration(PULSE_MS)),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "spotlight-pulse",
+        ).value
+    } else {
+        0.5f
+    }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         /*

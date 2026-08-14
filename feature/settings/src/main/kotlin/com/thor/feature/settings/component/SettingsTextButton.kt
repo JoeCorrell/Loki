@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,7 +71,14 @@ fun SettingsTextButton(
             )
             .thorCursor(focused = highlighted, shape = shape)
             .let { button ->
-                if (onClick != null) button.clickable(enabled = enabled, onClick = onClick)
+                if (onClick != null) {
+                    button.clickable(
+                        enabled = enabled,
+                        onClickLabel = label,
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
+                }
                 else button
             }
             .padding(horizontal = SETTINGS_BUTTON_HORIZONTAL_PADDING.dp),

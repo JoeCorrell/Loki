@@ -76,6 +76,18 @@ class ThemeSpecTest {
                 // is about where a palette came from, not which way it leans.
                 ThemeFamily.EDITOR -> Unit
 
+                /*
+                 * The multi-colour shelf makes a claim about harmony, not about
+                 * temperature — which is exactly why it exists. Filing a
+                 * twelve-hue theme under "Warm" would be picking one of its
+                 * colours and calling it the theme, so what is checked here is
+                 * that it genuinely has more than one.
+                 */
+                ThemeFamily.MULTI ->
+                    assertWithMessage("$message is genuinely more than one colour")
+                        .that(recipe.harmony.isMultiColour)
+                        .isTrue()
+
                 ThemeFamily.NEUTRAL ->
                     assertWithMessage(message)
                         .that(recipe.accentChroma)
@@ -597,10 +609,18 @@ class ThemeSpecTest {
          * many ports there are — a shelf of ports cannot be padded to a quota,
          * because a port has to be of something people actually use.
          */
+        /**
+         * In gallery order, because the ordering test reads this map's keys.
+         *
+         * Multi-colour sits between the temperature shelves and the editor one:
+         * it is still a claim about the palette itself, where Editor is a claim
+         * about where the palette came from.
+         */
         val SHELF_SIZES = mapOf(
             ThemeFamily.NEUTRAL to 4,
             ThemeFamily.WARM to 4,
             ThemeFamily.COOL to 4,
+            ThemeFamily.MULTI to 3,
             ThemeFamily.EDITOR to 2,
         )
 

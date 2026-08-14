@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Declared by the feature rather than by either app.
+
+      The session is the streaming feature — the surface, the decoder, the pad
+      and the on-screen keyboard — and both the launcher and the standalone app
+      start the same class. A declaration in each app's manifest would be the
+      same twelve attributes written twice, kept in step by hand, and it was
+      already a landscape-locked activity with a very specific `configChanges`
+      list that nobody would think to copy correctly.
+
+      Manifest merging puts this into whichever app depends on the module, so
+      adding a third entry point later costs nothing here.
+
+      `exported` is false: a stream is started from inside one of these apps and
+      there is nothing another application could sensibly ask it to do.
+    -->
+    <application>
+        <activity
+            android:name="com.thor.feature.stream.session.StreamSessionActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true"
+            android:resizeableActivity="false"
+            android:preferMinimalPostProcessing="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode" />
+    </application>
+</manifest>

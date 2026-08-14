@@ -52,7 +52,10 @@ data class ThorMotion(
     /** Background artwork cross-fade; slow on purpose so it reads as ambient. */
     val backdropMillis: Int get() = duration(650)
 
-    private fun duration(base: Int): Int = (base * scale).toInt().coerceAtLeast(0)
+    /** Scales an exceptional duration that does not fit one of the named tokens. */
+    fun scaledDuration(base: Int): Int = (base * scale).toInt().coerceAtLeast(0)
+
+    private fun duration(base: Int): Int = scaledDuration(base)
 
     val easing: Easing
         get() = when (style) {

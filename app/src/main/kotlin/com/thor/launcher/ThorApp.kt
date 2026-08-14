@@ -109,7 +109,7 @@ import com.thor.core.ui.feedback.rememberThorFeedback
 import com.thor.feature.home.BottomScreen
 import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.couch.CouchDashboardActions
-import com.thor.launcher.stream.StreamSessionActivity
+import com.thor.feature.stream.session.StreamSessionActivity
 import com.thor.feature.home.LauncherEffect
 import com.thor.feature.home.AppDrawerScreen
 import com.thor.feature.home.InputSurface
@@ -1541,6 +1541,7 @@ fun ThorApp(
          * on a beat instead of whenever the curve happens to finish.
          */
         val introProgress = remember { Animatable(0f) }
+        val motion = ThorTheme.motion
         val introMotion = ThorTheme.materials.animationsEnabled &&
             !settings.performance.performanceMode
 
@@ -1557,32 +1558,34 @@ fun ThorApp(
                         introProgress.animateTo(
                             targetValue = INTRO_LOAD_START,
                             animationSpec = tween(
-                                durationMillis = INTRO_MARK_MS,
+                                durationMillis = motion.scaledDuration(INTRO_MARK_MS),
                                 easing = FastOutSlowInEasing,
                             ),
                         )
                         val loadingFeedback = launch {
-                            delay(INTRO_LOAD_FIRST_CUE_MS.toLong())
+                            delay(motion.scaledDuration(INTRO_LOAD_FIRST_CUE_MS).toLong())
                             feedback.play(FeedbackCue.SCROLL)
                             delay(
-                                (INTRO_LOAD_SECOND_CUE_MS - INTRO_LOAD_FIRST_CUE_MS).toLong(),
+                                motion.scaledDuration(
+                                    INTRO_LOAD_SECOND_CUE_MS - INTRO_LOAD_FIRST_CUE_MS,
+                                ).toLong(),
                             )
                             feedback.play(FeedbackCue.SCROLL)
                         }
                         introProgress.animateTo(
                             targetValue = INTRO_LOADED,
                             animationSpec = tween(
-                                durationMillis = INTRO_LOAD_MS,
+                                durationMillis = motion.scaledDuration(INTRO_LOAD_MS),
                                 easing = LinearEasing,
                             ),
                         )
                         loadingFeedback.cancel()
                         feedback.play(FeedbackCue.SUCCESS)
-                        delay(INTRO_READY_HOLD_MS.toLong())
+                        delay(motion.scaledDuration(INTRO_READY_HOLD_MS).toLong())
                         introProgress.animateTo(
                             targetValue = INTRO_REVEAL_START,
                             animationSpec = tween(
-                                durationMillis = INTRO_READY_SETTLE_MS,
+                                durationMillis = motion.scaledDuration(INTRO_READY_SETTLE_MS),
                                 easing = FastOutSlowInEasing,
                             ),
                         )
@@ -1590,7 +1593,7 @@ fun ThorApp(
                         introProgress.animateTo(
                             targetValue = 1f,
                             animationSpec = tween(
-                                durationMillis = INTRO_REVEAL_MS,
+                                durationMillis = motion.scaledDuration(INTRO_REVEAL_MS),
                                 easing = LinearOutSlowInEasing,
                             ),
                         )
@@ -1598,7 +1601,7 @@ fun ThorApp(
                         introProgress.animateTo(
                             targetValue = 1f,
                             animationSpec = tween(
-                                durationMillis = INTRO_REDUCED_MS,
+                                durationMillis = motion.scaledDuration(INTRO_REDUCED_MS),
                                 easing = LinearOutSlowInEasing,
                             ),
                         )
@@ -1668,14 +1671,14 @@ fun ThorApp(
                     couchIntroProgress.animateTo(
                         targetValue = INTRO_LOAD_START,
                         animationSpec = tween(
-                            durationMillis = COUCH_INTRO_MARK_MS,
+                            durationMillis = motion.scaledDuration(COUCH_INTRO_MARK_MS),
                             easing = FastOutSlowInEasing,
                         ),
                     )
                     couchIntroProgress.animateTo(
                         targetValue = INTRO_LOADED,
                         animationSpec = tween(
-                            durationMillis = COUCH_INTRO_LOAD_MS,
+                            durationMillis = motion.scaledDuration(COUCH_INTRO_LOAD_MS),
                             easing = LinearEasing,
                         ),
                     )
@@ -1683,7 +1686,7 @@ fun ThorApp(
                     couchIntroProgress.animateTo(
                         targetValue = INTRO_REVEAL_START,
                         animationSpec = tween(
-                            durationMillis = INTRO_READY_SETTLE_MS,
+                            durationMillis = motion.scaledDuration(INTRO_READY_SETTLE_MS),
                             easing = FastOutSlowInEasing,
                         ),
                     )
@@ -1691,7 +1694,7 @@ fun ThorApp(
                     couchIntroProgress.animateTo(
                         targetValue = 1f,
                         animationSpec = tween(
-                            durationMillis = INTRO_REVEAL_MS,
+                            durationMillis = motion.scaledDuration(INTRO_REVEAL_MS),
                             easing = LinearOutSlowInEasing,
                         ),
                     )
@@ -1699,7 +1702,7 @@ fun ThorApp(
                     couchIntroProgress.animateTo(
                         targetValue = 1f,
                         animationSpec = tween(
-                            durationMillis = INTRO_REDUCED_MS,
+                            durationMillis = motion.scaledDuration(INTRO_REDUCED_MS),
                             easing = LinearOutSlowInEasing,
                         ),
                     )
@@ -2226,8 +2229,8 @@ fun ThorApp(
 
                 AnimatedVisibility(
                     visible = overlay != Overlay.NONE,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
+                    enter = fadeIn(motion.tweenSpec(motion.panelMillis)),
+                    exit = fadeOut(motion.tweenSpec(motion.panelMillis)),
                 ) {
                     when (overlay) {
                         Overlay.SETTINGS -> if (mode != DualScreenMode.COUCH) {
@@ -3466,16 +3469,23 @@ private fun RecordingBadge(modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
 
     // A slow blink, because a solid dot on a static panel reads as a dead pixel.
-    val transition = rememberInfiniteTransition(label = "rec")
-    val alpha by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "recAlpha",
-    )
+    val alpha = if (ThorTheme.materials.animationsEnabled) {
+        val transition = rememberInfiniteTransition(label = "rec")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = ThorTheme.motion.scaledDuration(900),
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "recAlpha",
+        ).value
+    } else {
+        1f
+    }
 
     Row(
         modifier = modifier
@@ -3519,16 +3529,23 @@ private fun ScrapeBadge(state: ScrapeState.Running, modifier: Modifier = Modifie
 
     // The same slow blink the recording badge uses, for the same reason: a solid
     // dot on a static panel reads as a dead pixel rather than as activity.
-    val transition = rememberInfiniteTransition(label = "scrape")
-    val alpha by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_100, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "scrapeAlpha",
-    )
+    val alpha = if (ThorTheme.materials.animationsEnabled) {
+        val transition = rememberInfiniteTransition(label = "scrape")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.3f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = ThorTheme.motion.scaledDuration(1_100),
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "scrapeAlpha",
+        ).value
+    } else {
+        1f
+    }
 
     Row(
         modifier = modifier

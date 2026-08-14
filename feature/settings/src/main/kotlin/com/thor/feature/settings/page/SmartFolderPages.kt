@@ -1,5 +1,19 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.runtime.Composable
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.Platform
@@ -70,6 +84,7 @@ private fun SmartFolderList(
 
     ChoiceRow(
         title = "New smart folder",
+        icon = Icons.Rounded.CreateNewFolder,
         subtitle = "Creates it on the grid and opens it here",
         options = SmartFolderPreset.entries,
         // No selection to remember: the row is an action wearing a chooser, so it
@@ -120,6 +135,7 @@ private fun SmartFolderFields(
 
     TextFieldRow(
         title = "Name",
+        icon = Icons.Rounded.Badge,
         subtitle = "What the folder is called on the grid",
         value = folder.title,
         focused = focusedRow == 0,
@@ -131,6 +147,7 @@ private fun SmartFolderFields(
     // a multi-select over 47 systems is a worse control than one that says "any".
     ChoiceRow(
         title = "System",
+        icon = Icons.Rounded.Memory,
         subtitle = "Limit the folder to one console, or leave it open to all",
         options = listOf<Platform?>(null) + platforms,
         selected = platforms.firstOrNull { it.id in query.platformIds },
@@ -145,6 +162,7 @@ private fun SmartFolderFields(
     RowDivider()
     SwitchRow(
         title = "Favourites only",
+        icon = Icons.Rounded.Star,
         subtitle = "Only games you have starred",
         checked = query.favoritesOnly,
         focused = focusedRow == 2,
@@ -155,6 +173,7 @@ private fun SmartFolderFields(
     RowDivider()
     SwitchRow(
         title = "Unplayed only",
+        icon = Icons.Rounded.HourglassEmpty,
         subtitle = "Games you have never started. The other half of a backlog " +
             "folder, and mutually exclusive with a recently-played window.",
         checked = query.unplayedOnly,
@@ -166,6 +185,7 @@ private fun SmartFolderFields(
     RowDivider()
     IntSliderRow(
         title = "Played within",
+        icon = Icons.Rounded.Schedule,
         subtitle = "Only games played this recently. Zero turns the window off.",
         value = query.playedWithinDays ?: 0,
         range = 0..NINETY_DAYS,
@@ -180,6 +200,7 @@ private fun SmartFolderFields(
     RowDivider()
     IntSliderRow(
         title = "Minimum rating",
+        icon = Icons.Rounded.Star,
         subtitle = "Out of 100, as the scrapers report it. Zero accepts anything, " +
             "including games nothing has rated.",
         value = query.minRating ?: 0,
@@ -203,6 +224,7 @@ private fun SmartFolderFields(
      */
     ChoiceRow(
         title = "Released after",
+        icon = Icons.Rounded.CalendarMonth,
         subtitle = "Only games from this year onwards",
         options = YEAR_OPTIONS,
         selected = query.releasedAfterYear,
@@ -215,6 +237,7 @@ private fun SmartFolderFields(
     RowDivider()
     ChoiceRow(
         title = "Released before",
+        icon = Icons.Rounded.CalendarMonth,
         subtitle = "With the row above, this is how a folder for one console " +
             "generation is made",
         options = YEAR_OPTIONS,
@@ -228,6 +251,7 @@ private fun SmartFolderFields(
     RowDivider()
     TextFieldRow(
         title = "Title contains",
+        icon = Icons.Rounded.Search,
         subtitle = "Matches part of a name — \"Mario\", \"Final Fantasy\"",
         value = query.titleContains.orEmpty(),
         placeholder = "Any",
@@ -241,6 +265,7 @@ private fun SmartFolderFields(
     RowDivider()
     ChoiceRow(
         title = "Order",
+        icon = Icons.Rounded.Sort,
         subtitle = "How the folder's contents are sorted",
         options = SortOrder.entries,
         selected = query.sort,
@@ -253,6 +278,7 @@ private fun SmartFolderFields(
     RowDivider()
     SwitchRow(
         title = "Reverse the order",
+        icon = Icons.Rounded.SwapVert,
         subtitle = "Newest, highest or longest first",
         checked = query.sortDescending,
         focused = focusedRow == 10,
@@ -263,6 +289,7 @@ private fun SmartFolderFields(
     RowDivider()
     IntSliderRow(
         title = "Keep at most",
+        icon = Icons.Rounded.FilterList,
         subtitle = "Caps the folder, which is what makes a \"last ten games\" " +
             "folder stay ten. Zero keeps everything that matches.",
         value = query.limit ?: 0,
@@ -277,6 +304,7 @@ private fun SmartFolderFields(
     RowDivider()
     ActionRow(
         title = "Delete this folder",
+        icon = Icons.Rounded.Delete,
         subtitle = "The folder goes; nothing inside it does, because nothing is " +
             "inside it — the games were only ever matching it.",
         focused = focusedRow == 12,
@@ -287,6 +315,7 @@ private fun SmartFolderFields(
     RowDivider()
     ActionRow(
         title = "Done",
+        icon = Icons.Rounded.Check,
         subtitle = "Back to the list",
         focused = focusedRow == 13,
         trailingLabel = "Done",

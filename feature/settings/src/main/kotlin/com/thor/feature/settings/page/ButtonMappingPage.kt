@@ -1,5 +1,14 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ManageAccounts
+import androidx.compose.material.icons.rounded.PanTool
+import androidx.compose.material.icons.rounded.PersonRemove
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
 import android.view.KeyEvent
 import androidx.compose.runtime.Composable
 import com.thor.core.input.ControllerProfiles
@@ -69,6 +78,7 @@ private fun ProfileList(
 
     ChoiceRow(
         title = "Active profile",
+        icon = Icons.Rounded.ManageAccounts,
         subtitle = "Applies immediately, everywhere",
         options = all,
         selected = all.firstOrNull { it.id == activeId } ?: ControllerProfiles.DEFAULT,
@@ -79,6 +89,7 @@ private fun ProfileList(
     RowDivider()
     ChoiceRow(
         title = "Copy a profile",
+        icon = Icons.Rounded.ContentCopy,
         subtitle = "Makes an editable copy and opens it",
         options = all,
         selected = all.firstOrNull { it.id == activeId } ?: ControllerProfiles.DEFAULT,
@@ -120,6 +131,7 @@ private fun ProfileBindings(
 
     TextFieldRow(
         title = "Name",
+        icon = Icons.Rounded.Badge,
         subtitle = "What this profile is called",
         value = profile.name,
         focused = focusedRow == 0,
@@ -157,6 +169,7 @@ private fun ProfileBindings(
 
     IntSliderRow(
         title = "Hold to pick up",
+        icon = Icons.Rounded.PanTool,
         subtitle = "How long Confirm must be held before it grabs an icon",
         value = profile.longPressMillis.toInt(),
         range = 200..1_000,
@@ -169,6 +182,7 @@ private fun ProfileBindings(
     RowDivider()
     IntSliderRow(
         title = "Repeat delay",
+        icon = Icons.Rounded.Timer,
         subtitle = "How long a direction is held before it starts repeating",
         value = profile.repeatDelayMillis.toInt(),
         range = 150..800,
@@ -181,6 +195,7 @@ private fun ProfileBindings(
     RowDivider()
     IntSliderRow(
         title = "Repeat speed",
+        icon = Icons.Rounded.Speed,
         subtitle = "Interval between repeats once they start. Lower is faster.",
         value = profile.repeatIntervalMillis.toInt(),
         range = 40..300,
@@ -209,6 +224,7 @@ private fun ProfileBindings(
 
     ActionRow(
         title = "Delete this profile",
+        icon = Icons.Rounded.PersonRemove,
         subtitle = "Falls back to the default mapping if this one is in use",
         focused = focusedRow == feelRow(4),
         trailingLabel = "Delete",
@@ -218,6 +234,7 @@ private fun ProfileBindings(
     RowDivider()
     ActionRow(
         title = "Done",
+        icon = Icons.Rounded.Check,
         subtitle = "Back to the list. The profile stays applied.",
         focused = focusedRow == feelRow(5),
         trailingLabel = "Done",

@@ -1,5 +1,13 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Colorize
+import androidx.compose.material.icons.rounded.Contrast
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.RoundedCorner
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -54,6 +62,7 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     RowDivider()
     ChoiceRow(
         title = "Light or dark",
+        icon = Icons.Rounded.Contrast,
         subtitle = "Every theme is built both ways",
         options = ThemeMode.entries,
         selected = personalization.themeMode,
@@ -66,6 +75,7 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     RowDivider()
     SwitchRow(
         title = "Pure black",
+        icon = Icons.Rounded.DarkMode,
         subtitle = "Draw the darkest surface as true black. Saves power on an OLED " +
             "panel, and turns off the grain and the background wash with it.",
         checked = personalization.pureBlack,
@@ -117,6 +127,7 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     RowDivider()
     ChoiceRow(
         title = "Contrast",
+        icon = Icons.Rounded.Contrast,
         subtitle = "How far text is pushed from the surface behind it",
         options = ContrastLevel.entries,
         selected = personalization.contrastLevel,
@@ -132,6 +143,7 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     RowDivider()
     SwitchRow(
         title = "Dynamic colour",
+        icon = Icons.Rounded.Colorize,
         subtitle = "Derive Material components' palette from the system wallpaper " +
             "(Android 12+)",
         checked = personalization.useDynamicColor,
@@ -143,6 +155,7 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     RowDivider()
     ActionRow(
         title = "Reset colour adjustments",
+        icon = Icons.Rounded.RestartAlt,
         subtitle = "Puts the accent, hue, intensity and contrast back to the theme's own",
         focused = focusedRow == 8,
         trailingLabel = "Reset",
@@ -178,6 +191,7 @@ internal fun SurfacesPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
 
     ChoiceRow(
         title = "Panel material",
+        icon = Icons.Rounded.Layers,
         subtitle = "How every panel, card and sheet is built",
         options = SURFACE_STYLE_OPTIONS,
         selected = personalization.surfaceStyleOverride,
@@ -193,6 +207,7 @@ internal fun SurfacesPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     // shaping. The two are only comprehensible together.
     ChoiceRow(
         title = "Corner style",
+        icon = Icons.Rounded.RoundedCorner,
         subtitle = "Shape of panels, cards, dialogs and tabs",
         options = CornerStyle.entries,
         selected = personalization.cornerStyle,
@@ -205,6 +220,7 @@ internal fun SurfacesPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     RowDivider()
     SwitchRow(
         title = "Glass effects",
+        icon = Icons.Rounded.BlurOn,
         subtitle = "Translucent panels with a blurred backdrop. Off makes every " +
             "surface opaque, whatever material is chosen.",
         checked = personalization.glassEffects,
@@ -241,6 +257,7 @@ internal fun SurfacesPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     RowDivider()
     ActionRow(
         title = "Reset surfaces",
+        icon = Icons.Rounded.RestartAlt,
         subtitle = "Back to the material, depth and grain the theme declares",
         focused = focusedRow == 5,
         trailingLabel = "Reset",

@@ -1,5 +1,12 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.ViewCarousel
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.runtime.Composable
 import com.thor.core.model.ThorSettings
 import com.thor.data.media.TraktDeviceCode
@@ -66,6 +73,7 @@ internal fun TraktPage(
         RowDivider()
         ActionRow(
             title = "Cancel signing in",
+            icon = Icons.Rounded.Close,
             subtitle = "Stops waiting. Nothing is connected.",
             focused = focusedRow == 0,
             trailingLabel = "Cancel",
@@ -77,6 +85,7 @@ internal fun TraktPage(
     if (!trakt.isConnected) {
         ActionRow(
             title = "Connect an account",
+            icon = Icons.Rounded.Login,
             subtitle = "Shows a short code to enter on your phone or computer. " +
                 "Nothing is typed on this device.",
             focused = focusedRow == 0,
@@ -88,6 +97,7 @@ internal fun TraktPage(
 
     SwitchRow(
         title = "Report what I watch",
+        icon = Icons.Rounded.Visibility,
         subtitle = "Marks films and episodes as watched on Trakt as you play them, " +
             "and picks up where you left off on another device.",
         checked = trakt.scrobble,
@@ -97,6 +107,7 @@ internal fun TraktPage(
     RowDivider()
     SwitchRow(
         title = "Show my Trakt shelves",
+        icon = Icons.Rounded.ViewCarousel,
         subtitle = "Adds your watchlist and what you are part-way through to " +
             "Films & shows, above the catalogue.",
         checked = trakt.showRows,
@@ -106,6 +117,7 @@ internal fun TraktPage(
     RowDivider()
     ActionRow(
         title = "Check the connection",
+        icon = Icons.Rounded.NetworkCheck,
         subtitle = "Asks Trakt who this device is signed in as",
         focused = focusedRow == 2,
         trailingLabel = "Check",
@@ -114,6 +126,7 @@ internal fun TraktPage(
     RowDivider()
     ActionRow(
         title = "Sign out",
+        icon = Icons.Rounded.Logout,
         // Worth saying: signing out of a *tracking* service sounds like it might
         // take the history with it, and it does not. Nothing here has ever
         // written to the account except plays the viewer asked to be recorded.

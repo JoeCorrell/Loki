@@ -81,25 +81,40 @@ fun DesignScale(
 /**
  * The launcher's own panels: the grid, the information panel, every overlay.
  *
- * 540 is the short edge of a 1080p screen at the density Android gives one by
- * default, which is what this interface was drawn against — so on the common
- * case the correction is exactly 1 and nothing moves. It is a calibration, not a
- * constraint: a screen half again as tall in dp gets a density half again as
- * large, and the launcher looks identical.
+ * A bigger number means a smaller interface. This is the short edge of the
+ * design canvas the window is made to be, so raising it says "the screen is
+ * worth more design units", each dp becomes a smaller share of the panel, and
+ * more fits on it.
+ *
+ * 540 was the short edge of a 1080p screen at the density Android gives one by
+ * default — the canvas this interface was originally drawn against, so on that
+ * screen the correction was exactly 1. It read as zoomed in on the hardware
+ * this fork is for: the AYN Thor's panels are physically small and sit close to
+ * the face, and an interface calibrated to a phone held at arm's length puts
+ * about two thirds as much on them as there is room for.
+ *
+ * 675 was 540 at 80%, chosen as a round fifth rather than tuned, and 80% turned
+ * out to be a fifth too far: at that size the rows were legible but tight, and
+ * the interface had the density of a desktop rather than of something held.
+ * 614 is the same 675 asked to be 10% larger, which lands at 540 × 88%.
+ *
+ * It is a calibration and not a constraint — a screen half again as tall in dp
+ * still gets a density half again as large, and the launcher looks identical on
+ * it.
  */
-const val PANEL_SHORT_SIDE = 540
+const val PANEL_SHORT_SIDE = 614
 
 /**
  * Couch Mode, which is drawn for a room rather than for a hand.
  *
- * 720 rather than 540, and the ratio between them is the whole difference: at
- * the same screen, couch mode's dp are three quarters the size of a panel's, so
- * a television holds about as much as a set-top box does instead of showing a
- * handheld's interface enlarged to fill a wall. That three quarters used to be a
- * bare multiplier applied to the panel's density — correct on one screen and
- * wrong on every other, because it never asked how large the screen was.
+ * Kept at three quarters the size of a panel's dp, which is the whole point of
+ * having a second number: a television should hold about as much as a set-top
+ * box does rather than show a handheld's interface enlarged to fill a wall.
+ * That ratio is why this moves with [PANEL_SHORT_SIDE] rather than holding a
+ * number of its own — leaving it behind would make couch mode's dp *larger*
+ * than a panel's and invert the relationship it exists to express.
  */
-const val COUCH_SHORT_SIDE = 720
+const val COUCH_SHORT_SIDE = PANEL_SHORT_SIDE * 4 / 3
 
 /**
  * Bounds on the correction.

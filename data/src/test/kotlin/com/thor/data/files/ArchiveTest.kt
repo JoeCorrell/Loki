@@ -156,4 +156,54 @@ class ArchiveTest {
 
         assertThat(temporaryFolder.root.list()?.none { it.endsWith(".part") }).isTrue()
     }
+
+    @Test
+    fun `conflicting archive paths are refused without publishing a folder`() = runTest {
+        val archive = File(temporaryFolder.root, "conflict.zip")
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("Saves/Slot.srm"))
+            zip.write("first".toByteArray())
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("saves/slot.srm"))
+            zip.write("replacement".toByteArray())
+            zip.closeEntry()
+        }
+
+        val result = repository.extract(archive.absolutePath)
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(File(temporaryFolder.root, "conflict").exists()).isFalse()
+        assertThat(temporaryFolder.root.list().orEmpty().none { it.startsWith(".loki-part-") }).isTrue()
+    }
+
+    @Test
+    fun `excessively deep archive paths are refused`() = runTest {
+        val archive = File(temporaryFolder.root, "deep.zip")
+        val entryName = List(65) { "folder" }.joinToString("/") + "/file.txt"
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry(entryName))
+            zip.write("data".toByteArray())
+            zip.closeEntry()
+        }
+
+        val result = repository.extract(archive.absolutePath)
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(File(temporaryFolder.root, "deep").exists()).isFalse()
+    }
+
+    @Test
+    fun `drive rooted archive paths are refused`() = runTest {
+        val archive = File(temporaryFolder.root, "drive.zip")
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("C:/outside.txt"))
+            zip.write("data".toByteArray())
+            zip.closeEntry()
+        }
+
+        val result = repository.extract(archive.absolutePath)
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(File(temporaryFolder.root, "drive").exists()).isFalse()
+    }
 }

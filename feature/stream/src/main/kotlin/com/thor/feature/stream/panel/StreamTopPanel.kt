@@ -36,6 +36,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.pointer.pointerHover
@@ -60,11 +61,15 @@ fun StreamTopPanel(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.cursor, state.hosts.size) {
         if (state.hosts.isNotEmpty()) {
-            listState.animateScrollToItem(state.cursor.coerceIn(0, state.hosts.lastIndex))
+            listState.revealItem(
+                state.cursor.coerceIn(0, state.hosts.lastIndex),
+                animate = animateMotion,
+            )
         }
     }
 

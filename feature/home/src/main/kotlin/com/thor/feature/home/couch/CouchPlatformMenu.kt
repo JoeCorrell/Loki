@@ -41,6 +41,7 @@ import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.THOR_MENU_ICON_TILE
 import com.thor.core.ui.component.ThorMenuRow
+import com.thor.core.ui.motion.revealItem
 import com.thor.feature.home.shell.icon
 
 data class CouchPlatformSummary(
@@ -61,11 +62,14 @@ fun CouchPlatformMenu(
 ) {
     val colors = ThorTheme.colors
     val motion = ThorTheme.motion
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val safeIndex = focusedIndex.coerceIn(0, (platforms.size - 1).coerceAtLeast(0))
 
     LaunchedEffect(visible, safeIndex, platforms.size) {
-        if (visible && platforms.isNotEmpty()) listState.animateScrollToItem(safeIndex)
+        if (visible && platforms.isNotEmpty()) {
+            listState.revealItem(safeIndex, animate = animateMotion)
+        }
     }
 
     AnimatedVisibility(

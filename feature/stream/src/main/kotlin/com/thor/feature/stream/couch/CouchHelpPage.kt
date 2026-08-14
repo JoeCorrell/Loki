@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.feature.stream.tint
@@ -64,10 +65,13 @@ internal fun CouchHelpPage(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val safeCursor = cursor.coerceIn(0, STREAM_HELP_SECTIONS.lastIndex)
 
-    LaunchedEffect(safeCursor) { listState.animateScrollToItem(safeCursor) }
+    LaunchedEffect(safeCursor) {
+        listState.revealItem(safeCursor, animate = animateMotion)
+    }
 
     Row(
         modifier = modifier.padding(horizontal = SCREEN_INSET.dp, vertical = SCREEN_TOP_INSET.dp),

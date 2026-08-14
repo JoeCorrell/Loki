@@ -1,5 +1,19 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Animation
+import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Contrast
+import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.MotionPhotosOff
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.Weekend
 import androidx.compose.runtime.Composable
 import com.thor.core.model.ColorBlindMode
 import com.thor.core.model.CouchWallpaperStyle
@@ -19,6 +33,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
 
     ChoiceRow(
         title = "Screen mode",
+        icon = Icons.Rounded.Monitor,
         subtitle = "Automatic uses the second panel when one is attached. " +
             "Couch mode puts everything on the top screen and turns the bottom " +
             "one off, for a docked device you are sitting away from.",
@@ -31,6 +46,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     SwitchRow(
         title = "Couch mode on a monitor",
+        icon = Icons.Rounded.Weekend,
         subtitle = if (display.mode == DualScreenMode.AUTO) {
             "Switches to Couch mode on its own when a monitor is plugged in"
         } else {
@@ -58,6 +74,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     ChoiceRow(
         title = "Couch background",
+        icon = Icons.Rounded.Wallpaper,
         subtitle = "What Couch mode draws behind its dashboard. All of these are " +
             "drawn rather than loaded, tinted by the highlighted system, and slow " +
             "enough to sit behind something you are reading. Match launcher hands " +
@@ -71,6 +88,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     SwitchRow(
         title = "Swap screens",
+        icon = Icons.Rounded.SwapHoriz,
         subtitle = if (display.mode == DualScreenMode.COUCH) {
             "Not used in couch mode — only one screen is in play"
         } else {
@@ -94,6 +112,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
     RowDivider()
     SwitchRow(
         title = "Keep screen awake",
+        icon = Icons.Rounded.Visibility,
         checked = display.keepTopScreenAwake,
         focused = focusedRow == 6,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(keepTopScreenAwake = on) } },
@@ -104,6 +123,7 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
 internal fun RecordingPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     ChoiceRow(
         title = "Sound",
+        icon = Icons.Rounded.VolumeUp,
         /*
          * Says what the microphone will actually pick up.
          *
@@ -129,6 +149,7 @@ internal fun PerformancePage(settings: ThorSettings, focusedRow: Int, viewModel:
 
     SwitchRow(
         title = "Performance mode",
+        icon = Icons.Rounded.Speed,
         subtitle = "Disables blur and animated wallpaper in one switch",
         checked = performance.performanceMode,
         focused = focusedRow == 0,
@@ -137,6 +158,7 @@ internal fun PerformancePage(settings: ThorSettings, focusedRow: Int, viewModel:
     RowDivider()
     SwitchRow(
         title = "Animations",
+        icon = Icons.Rounded.Animation,
         checked = performance.animationsEnabled,
         focused = focusedRow == 1,
         onCheckedChange = { on ->
@@ -146,6 +168,7 @@ internal fun PerformancePage(settings: ThorSettings, focusedRow: Int, viewModel:
     RowDivider()
     SwitchRow(
         title = "Background blur",
+        icon = Icons.Rounded.BlurOn,
         checked = performance.blurEnabled,
         focused = focusedRow == 2,
         onCheckedChange = { on -> viewModel.updatePerformance { it.copy(blurEnabled = on) } },
@@ -162,6 +185,7 @@ internal fun AccessibilityPage(
 
     SwitchRow(
         title = "High contrast",
+        icon = Icons.Rounded.Contrast,
         // Says what it does now that Contrast is a dial on the Theme page: this is
         // the top of that dial, reachable from here without hunting for it, and it
         // wins while it is on — so the two controls cannot appear to disagree.
@@ -174,6 +198,7 @@ internal fun AccessibilityPage(
     RowDivider()
     SwitchRow(
         title = "Large text",
+        icon = Icons.Rounded.FormatSize,
         checked = accessibility.largeText,
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateAccessibility { it.copy(largeText = on) } },
@@ -181,6 +206,7 @@ internal fun AccessibilityPage(
     RowDivider()
     SwitchRow(
         title = "Reduce motion",
+        icon = Icons.Rounded.MotionPhotosOff,
         subtitle = "Removes transitions and idle animation",
         checked = accessibility.reduceMotion,
         focused = focusedRow == 2,
@@ -189,6 +215,7 @@ internal fun AccessibilityPage(
     RowDivider()
     ChoiceRow(
         title = "Colour vision",
+        icon = Icons.Rounded.Palette,
         options = ColorBlindMode.entries,
         selected = accessibility.colorBlindMode,
         focused = focusedRow == 3,

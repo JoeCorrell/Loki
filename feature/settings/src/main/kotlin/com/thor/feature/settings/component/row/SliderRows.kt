@@ -1,6 +1,7 @@
 package com.thor.feature.settings.component.row
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -9,6 +10,8 @@ import kotlin.math.floor
 fun IntSliderRow(
     title: String,
     subtitle: String? = null,
+    /** The glyph in the row's tile; null draws the plain marker instead. */
+    icon: ImageVector? = null,
     value: Int,
     range: IntRange,
     focused: Boolean = false,
@@ -21,6 +24,7 @@ fun IntSliderRow(
     StepperRow(
         title = title,
         subtitle = subtitle,
+        icon = icon,
         value = "$clamped$suffix",
         focused = focused,
         canDecrease = clamped > range.first,
@@ -40,6 +44,8 @@ fun IntSliderRow(
 fun SliderRow(
     title: String,
     subtitle: String? = null,
+    /** The glyph in the row's tile; null draws the plain marker instead. */
+    icon: ImageVector? = null,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
@@ -65,6 +71,7 @@ fun SliderRow(
     StepperRow(
         title = title,
         subtitle = subtitle,
+        icon = icon,
         value = valueLabel(clamped),
         focused = focused,
         canDecrease = clamped > range.start + EPSILON,

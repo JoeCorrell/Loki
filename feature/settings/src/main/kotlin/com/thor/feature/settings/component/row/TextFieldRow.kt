@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,6 +35,8 @@ import com.thor.feature.settings.component.SettingsTextButton
 fun TextFieldRow(
     title: String,
     subtitle: String? = null,
+    /** The glyph in the row's tile; null draws the plain marker instead. */
+    icon: ImageVector? = null,
     value: String,
     placeholder: String? = null,
     isSecret: Boolean = false,

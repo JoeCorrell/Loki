@@ -12,7 +12,27 @@ import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.ManageAccounts
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Accessibility
+import androidx.compose.material.icons.rounded.Contrast
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Face
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Mouse
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Theaters
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.thor.core.model.AccentSlot
 import com.thor.core.model.LauncherExtension
 
 /**
@@ -56,6 +76,25 @@ enum class SettingsCategory(
      * [navigationEntries].
      */
     val extension: LauncherExtension? = null,
+    /**
+     * Which of the twelve wheel positions this category is painted with.
+     *
+     * A slot rather than a colour, so the tint is the *theme's* answer to
+     * "green" rather than a hex value picked against one palette — see
+     * [AccentSlot]. On a monochrome theme all twelve collapse onto the accent
+     * and nothing here has to know.
+     */
+    val slot: AccentSlot = AccentSlot.SLATE,
+    /**
+     * The cluster of glyphs on the right of this category's hero.
+     *
+     * Three icons, drawn at different sizes and opacities to read as one piece
+     * of art rather than as three buttons. Assembled from the icon set rather
+     * than drawn as illustrations: an illustration per category is eleven
+     * drawings to make and re-make every time a theme changes, and these tint
+     * themselves.
+     */
+    val art: List<ImageVector> = emptyList(),
 ) {
     /**
      * Who is using the launcher, first because it contains all the rest.
@@ -68,39 +107,35 @@ enum class SettingsCategory(
     PROFILES(
         "profiles", "Profiles", Icons.Rounded.ManageAccounts,
         "Who is signed in, and their name and picture",
+        slot = AccentSlot.BLUE,
+        art = listOf(Icons.Rounded.Groups, Icons.Rounded.ManageAccounts, Icons.Rounded.Face),
     ),
 
     APPEARANCE(
         "appearance", "Personalization", Icons.Rounded.Palette,
-        "Theme, wallpaper, grid, dock and cursor",
+        "Theme, surfaces, wallpaper and text",
+        slot = AccentSlot.VIOLET,
+        art = listOf(Icons.Rounded.Widgets, Icons.Rounded.Palette, Icons.Rounded.Contrast),
     ),
 
-    /**
-     * Folded into [APPEARANCE], and kept only for stored or deep-linked ids.
-     *
-     * The grid, the dock and the cursor are how the home screen looks, which is
-     * the question Personalization already answers.
-     */
     HOME_SCREEN(
         "home", "Home screen", Icons.Rounded.GridView,
-        "Grid layout, icon shape, dock and cursor",
-        visible = false,
+        "Grid layout, selection cursor and the dock",
+        slot = AccentSlot.INDIGO,
+        art = listOf(Icons.Rounded.Widgets, Icons.Rounded.GridView, Icons.Rounded.Dashboard),
     ),
     LIBRARY(
-        "library", "Games & artwork", Icons.AutoMirrored.Rounded.LibraryBooks,
-        "Platforms, ROMs, scanning, scrapers and icon packs",
+        "library", "Games", Icons.AutoMirrored.Rounded.LibraryBooks,
+        "Platforms, ROM folders, scanning, sorting and smart folders",
+        slot = AccentSlot.GREEN,
+        art = listOf(Icons.Rounded.Folder, Icons.Rounded.SportsEsports, Icons.Rounded.Image),
     ),
 
-    /**
-     * Folded into [LIBRARY], and kept only for stored or deep-linked ids.
-     *
-     * Where a game's picture comes from is a question about the library it is
-     * in, and a blank box art sends you looking for the games first either way.
-     */
     ARTWORK(
         "artwork", "Artwork", Icons.Rounded.Image,
-        "Scrapers, credentials and icon packs",
-        visible = false,
+        "Where descriptions and pictures come from, and achievements",
+        slot = AccentSlot.LIME,
+        art = listOf(Icons.Rounded.Download, Icons.Rounded.Image, Icons.Rounded.Palette),
     ),
 
     /**
@@ -114,6 +149,8 @@ enum class SettingsCategory(
         "movies", "Films & shows", Icons.Rounded.Movie,
         "Catalogue, sources and playback",
         extension = LauncherExtension.MOVIES,
+        slot = AccentSlot.MAGENTA,
+        art = listOf(Icons.Rounded.Theaters, Icons.Rounded.Movie, Icons.Rounded.PlayCircle),
     ),
     /**
      * Streaming a PC, which is neither a library nor a film.
@@ -127,30 +164,32 @@ enum class SettingsCategory(
         "streaming", "PC streaming", Icons.Rounded.Cast,
         "Picture quality and how PCs are found",
         extension = LauncherExtension.STREAM,
+        slot = AccentSlot.CYAN,
+        art = listOf(Icons.Rounded.Monitor, Icons.Rounded.Cast, Icons.Rounded.Wifi),
     ),
     CONTROLS(
         "controls", "Controls", Icons.Rounded.Gamepad,
         "Buttons, navigation, pointer, haptics and sound",
+        slot = AccentSlot.RED,
+        art = listOf(Icons.Rounded.TouchApp, Icons.Rounded.Gamepad, Icons.Rounded.Mouse),
     ),
-    /**
-     * Folded into [SYSTEM], and kept only for stored or deep-linked ids.
-     *
-     * Two pages is not a category. "How the screens behave" and "how hard the
-     * launcher works" are the same visit as contrast and text size, and a rail
-     * entry holding a pair of pages costs more to walk past than it saves.
-     */
     DISPLAY(
         "display", "Display & performance", Icons.Rounded.Monitor,
-        "Dual-screen behaviour, animation and visual effects",
-        visible = false,
+        "Dual-screen behaviour, visual effects and recording",
+        slot = AccentSlot.ORANGE,
+        art = listOf(Icons.Rounded.PhoneAndroid, Icons.Rounded.Monitor, Icons.Rounded.Speed),
     ),
     SYSTEM(
         "system", "System & accessibility", Icons.Rounded.Tune,
-        "Screens, performance, accessibility and extensions",
+        "Accessibility, backup, network shares and extensions",
+        slot = AccentSlot.TEAL,
+        art = listOf(Icons.Rounded.Accessibility, Icons.Rounded.Tune, Icons.Rounded.Extension),
     ),
     ABOUT(
         "about", "About", Icons.Rounded.Info,
         "Version and device information",
+        slot = AccentSlot.AMBER,
+        art = listOf(Icons.Rounded.Storage, Icons.Rounded.Info, Icons.Rounded.Memory),
     ),
     ;
 

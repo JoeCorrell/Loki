@@ -1,7 +1,6 @@
 package com.thor.feature.settings.component.row
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorShapes
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeOptions
 import com.thor.core.model.ThemeRecipe
@@ -154,8 +154,9 @@ fun ThemePreviewRow(
      * row's own inset and with nothing visible after it — so the one card the user
      * needs to see is the one drawn in the worst place on the row, and there is no
      * sense of which direction there is left to travel.
-     */
+    */
     val cardWidthPx = with(LocalDensity.current) { CARD_WIDTH.dp.roundToPx() }
+    val animateMotion = ThorTheme.materials.animationsEnabled
     LaunchedEffect(highlighted, selected, focused) {
         val index = if (focused) {
             highlighted
@@ -172,7 +173,11 @@ fun ThemePreviewRow(
         // as movement; snapped when it is not, because a row being restored to the
         // applied theme has no journey to show.
         if (focused) {
-            listState.animateScrollToItem(index, centred)
+            listState.revealItem(
+                index,
+                centred,
+                animate = animateMotion,
+            )
         } else {
             listState.scrollToItem(index, centred)
         }
@@ -266,7 +271,7 @@ private fun ThemeCard(
     // the border jumping between cards.
     val lift by animateFloatAsState(
         targetValue = if (cursorOn) CURSOR_SCALE else 1f,
-        animationSpec = tween(durationMillis = ThorTheme.motion.cursorMillis),
+        animationSpec = ThorTheme.motion.tweenSpec(ThorTheme.motion.cursorMillis),
         label = "themeCardLift",
     )
 

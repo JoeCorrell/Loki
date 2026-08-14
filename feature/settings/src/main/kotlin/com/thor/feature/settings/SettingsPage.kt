@@ -22,24 +22,18 @@ enum class SettingsPage(
     val title: String,
     val summary: String,
     /**
-     * The heading this page sits under, or null for a category short enough not
-     * to need one.
+     * The heading this page sits under, or null when the category needs none.
      *
-     * Headings rather than more categories, and that is the whole of this
-     * reorganisation. Personalization and Games & artwork had grown to eight
-     * pages each — long enough that finding one meant reading all of them — and
-     * the obvious fix, splitting them, is the one this file has already tried
-     * twice and folded back twice: see [SettingsCategory], where Home screen and
-     * Artwork are both kept as invisible ids from those attempts. A rail entry
-     * holding three pages is a stop on the way to somewhere else, and the rail is
-     * walked far more often than any one category.
+     * Nothing uses one now, and the field stays because the mechanism is sound
+     * and cheap: a heading is drawn rather than focused, so it costs the cursor
+     * nothing and needs no arithmetic anywhere.
      *
-     * A heading costs nothing to walk past. It is drawn, not focused, so the
-     * cursor still steps page to page and the row count is still the page count —
-     * which is why this change needed no arithmetic anywhere.
-     *
-     * Null on every category with four pages or fewer. Three headings over five
-     * pages is filing for its own sake.
+     * It exists because Personalization and Games & artwork had each grown to
+     * eight pages, and headings were tried as the alternative to splitting them.
+     * Splitting won in the end. A heading tells you which half of a long list to
+     * read; a rail entry means you never opened the wrong list at all — and the
+     * rail is the thing being walked. Eleven entries of two to five pages is a
+     * rail you scan and a list you take in whole.
      */
     val group: String? = null,
 ) {
@@ -47,7 +41,6 @@ enum class SettingsPage(
     THEME(
         SettingsCategory.APPEARANCE, "Theme & colour",
         "The gallery, light or dark, accent, contrast and intensity",
-        group = "Theme",
     ),
 
     /**
@@ -63,7 +56,6 @@ enum class SettingsPage(
     SURFACES(
         SettingsCategory.APPEARANCE, "Surfaces",
         "Panel material, corners, depth and texture",
-        group = "Theme",
     ),
 
     /**
@@ -78,7 +70,6 @@ enum class SettingsPage(
     THEME_EDITOR(
         SettingsCategory.APPEARANCE, "Theme editor",
         "Build a theme of your own, and share it",
-        group = "Theme",
     ),
 
     /*
@@ -92,53 +83,44 @@ enum class SettingsPage(
     // Named for what it holds rather than for where it is: under a "Home screen"
     // heading, a page called "Home screen" says the heading twice and says nothing.
     GRID(
-        SettingsCategory.APPEARANCE, "Grid & cards",
+        SettingsCategory.HOME_SCREEN, "Grid & cards",
         "Which layout Home uses, then size, spacing, icons and labels",
-        group = "Home screen",
     ),
     CURSOR(
-        SettingsCategory.APPEARANCE, "Selection cursor",
+        SettingsCategory.HOME_SCREEN, "Selection cursor",
         "Selection highlight style and glow",
-        group = "Home screen",
     ),
     DOCK(
-        SettingsCategory.APPEARANCE, "Dock",
+        SettingsCategory.HOME_SCREEN, "Dock",
         "Size, transparency and behaviour",
-        group = "Home screen",
     ),
 
     WALLPAPER(
         SettingsCategory.APPEARANCE, "Wallpaper",
         "Background image, animated effect and how far it is dimmed",
-        group = "Background & text",
     ),
     INTERFACE(
         SettingsCategory.APPEARANCE, "Interface",
         "Text size, motion, clock and folder style",
-        group = "Background & text",
     ),
 
     // ---- Games & artwork ---------------------------------------------------
     PLATFORMS(
         SettingsCategory.LIBRARY, "Platforms",
         "Consoles, their ROM folders and emulators",
-        group = "Where games come from",
     ),
     ROM_FOLDERS(
         SettingsCategory.LIBRARY, "Extra ROM folders",
         "Locations not tied to one platform",
-        group = "Where games come from",
     ),
     SCANNING(
         SettingsCategory.LIBRARY, "Scanning",
         "How games and apps are found",
-        group = "Where games come from",
     ),
 
     SORTING(
         SettingsCategory.LIBRARY, "Sorting",
         "Default library order",
-        group = "How they are arranged",
     ),
 
     /**
@@ -151,18 +133,15 @@ enum class SettingsPage(
     SMART_FOLDERS(
         SettingsCategory.LIBRARY, "Smart folders",
         "Folders that fill themselves from a query",
-        group = "How they are arranged",
     ),
 
     METADATA(
-        SettingsCategory.LIBRARY, "Metadata & scraping",
+        SettingsCategory.ARTWORK, "Metadata & scraping",
         "Where descriptions and artwork are fetched from",
-        group = "Artwork & progress",
     ),
     ICON_PACKS(
-        SettingsCategory.LIBRARY, "Platform artwork",
+        SettingsCategory.ARTWORK, "Platform artwork",
         "Icon packs, and the art Loki ships",
-        group = "Artwork & progress",
     ),
 
     /**
@@ -176,9 +155,8 @@ enum class SettingsPage(
      * several pages away from everything it belongs with.
      */
     ACHIEVEMENTS(
-        SettingsCategory.LIBRARY, "Achievements",
+        SettingsCategory.ARTWORK, "Achievements",
         "RetroAchievements account and matching",
-        group = "Artwork & progress",
     ),
 
     // ---- Films & shows -----------------------------------------------------
@@ -265,19 +243,16 @@ enum class SettingsPage(
     // Two pages is not a category, and "how the screens behave" is the same visit
     // as "how it reads and how hard it works".
     DUAL_SCREEN(
-        SettingsCategory.SYSTEM, "Dual screen",
+        SettingsCategory.DISPLAY, "Dual screen",
         "How the two panels are used",
-        group = "This device",
     ),
     PERFORMANCE(
-        SettingsCategory.SYSTEM, "Performance",
+        SettingsCategory.DISPLAY, "Performance",
         "Animation and visual effects",
-        group = "This device",
     ),
     ACCESSIBILITY(
         SettingsCategory.SYSTEM, "Accessibility",
         "Contrast, motion, text and colour vision",
-        group = "This device",
     ),
 
     /**
@@ -290,7 +265,6 @@ enum class SettingsPage(
     BACKUP(
         SettingsCategory.SYSTEM, "Backup",
         "Save this profile to a file, or restore one",
-        group = "Data & features",
     ),
 
     /**
@@ -303,13 +277,11 @@ enum class SettingsPage(
     NETWORK_SHARES(
         SettingsCategory.SYSTEM, "Network shares",
         "Browse a NAS or a PC's shared folders",
-        group = "Data & features",
     ),
 
     EXTENSIONS(
         SettingsCategory.SYSTEM, "Extensions",
         "Add Films & shows or PC streaming to the launcher",
-        group = "Data & features",
     ),
 
     /**
@@ -321,9 +293,8 @@ enum class SettingsPage(
      * Backup because both are about what leaves the device.
      */
     RECORDING(
-        SettingsCategory.SYSTEM, "Recording",
+        SettingsCategory.DISPLAY, "Recording",
         "Whether captures have sound",
-        group = "Data & features",
     ),
     ;
 

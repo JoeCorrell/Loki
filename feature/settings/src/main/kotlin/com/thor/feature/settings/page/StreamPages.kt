@@ -1,5 +1,22 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.HdrOn
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -66,6 +83,7 @@ internal fun StreamQualityPage(
     Column(modifier = Modifier.fillMaxWidth()) {
         ChoiceRow(
             title = "Resolution",
+            icon = Icons.Rounded.HighQuality,
             subtitle = "What to ask the PC to encode. Higher than this panel costs " +
                 "bandwidth and decoding for detail the screen cannot show.",
             options = RESOLUTIONS,
@@ -84,6 +102,7 @@ internal fun StreamQualityPage(
 
         ChoiceRow(
             title = "Frame rate",
+            icon = Icons.Rounded.Speed,
             subtitle = "Higher is smoother and more responsive, and costs bandwidth in " +
                 "proportion. A PC that cannot hold it sends fewer frames rather " +
                 "than failing.",
@@ -99,6 +118,7 @@ internal fun StreamQualityPage(
 
         IntSliderRow(
             title = "Bandwidth",
+            icon = Icons.Rounded.NetworkCheck,
             /*
              * Named as the setting that actually decides how it looks.
              *
@@ -125,6 +145,7 @@ internal fun StreamQualityPage(
 
         SwitchRow(
             title = "Ask for HDR",
+            icon = Icons.Rounded.HdrOn,
             subtitle = "Only if the PC and the game both support it. Loki does not yet " +
                 "apply the colour data, so this is off — and a stream that claims " +
                 "HDR without honouring it looks washed out.",
@@ -138,6 +159,7 @@ internal fun StreamQualityPage(
 
         ChoiceRow(
             title = "Video codec",
+            icon = Icons.Rounded.Memory,
             subtitle = "Newer codecs carry the same picture in less bandwidth but cost " +
                 "more to decode. A codec this device cannot decode in hardware is " +
                 "quietly not offered.",
@@ -154,6 +176,7 @@ internal fun StreamQualityPage(
 
         ChoiceRow(
             title = "Audio",
+            icon = Icons.Rounded.VolumeUp,
             subtitle = "Surround costs bandwidth to encode channels this handheld then " +
                 "mixes back down. Worth it only through headphones that do something " +
                 "with them.",
@@ -169,6 +192,7 @@ internal fun StreamQualityPage(
 
         ChoiceRow(
             title = "Connection",
+            icon = Icons.Rounded.Wifi,
             subtitle = "Decides packet size. A packet too large for the path is split, " +
                 "which costs far more than a slightly small one — VPNs in particular " +
                 "reduce what fits.",
@@ -185,6 +209,7 @@ internal fun StreamQualityPage(
 
         SwitchRow(
             title = "Keep playing sound on the PC",
+            icon = Icons.Rounded.Speaker,
             subtitle = "Off, because the usual reason to stream is that you are not at " +
                 "the PC, and sound from an empty room is a surprise rather than a " +
                 "feature.",
@@ -198,6 +223,7 @@ internal fun StreamQualityPage(
 
         SwitchRow(
             title = "Let the PC change game settings",
+            icon = Icons.Rounded.Tune,
             subtitle = "Sunshine and GeForce Experience call this “optimal playable " +
                 "settings”. Off: it rewrites options you chose, on your own machine, " +
                 "and only NVIDIA's host implemented it properly.",
@@ -231,6 +257,7 @@ internal fun StreamControlsPage(
     Column(modifier = Modifier.fillMaxWidth()) {
         SwitchRow(
             title = "Trackpad and keyboard on the bottom screen",
+            icon = Icons.Rounded.Keyboard,
             subtitle = "The reason the panel exists: Android's own keyboard cannot " +
                 "appear over a stream, or on the second screen at all, so without " +
                 "this there is no way to type on the PC.",
@@ -244,6 +271,7 @@ internal fun StreamControlsPage(
 
         SliderRow(
             title = "Pointer speed",
+            icon = Icons.Rounded.Speed,
             subtitle = "How far the pointer travels for a given swipe on the trackpad.",
             value = quality.trackpadSpeed,
             range = 0.5f..4f,
@@ -258,6 +286,7 @@ internal fun StreamControlsPage(
 
         SwitchRow(
             title = "Tap to click",
+            icon = Icons.Rounded.TouchApp,
             subtitle = "A tap on the trackpad is a left click; two fingers is a right " +
                 "click.",
             checked = quality.tapToClick,
@@ -270,6 +299,7 @@ internal fun StreamControlsPage(
 
         SwitchRow(
             title = "Natural scrolling",
+            icon = Icons.Rounded.SwapVert,
             subtitle = "Content follows your fingers, as it does everywhere else on a " +
                 "touchscreen. Off scrolls the way a mouse wheel does.",
             checked = quality.naturalScroll,
@@ -282,6 +312,7 @@ internal fun StreamControlsPage(
 
         SwitchRow(
             title = "Touch the picture to point",
+            icon = Icons.Rounded.TouchApp,
             subtitle = "Puts the PC's cursor exactly where you touch the video. Off by " +
                 "default: a hand resting on the screen would fling the cursor across " +
                 "the PC.",
@@ -312,6 +343,7 @@ internal fun StreamControlsPage(
 
         SwitchRow(
             title = "Start opens these settings",
+            icon = Icons.Rounded.Settings,
             subtitle = "Opens the trackpad panel's settings on the bottom screen. The PC " +
                 "then never sees Start, because a key press goes to one window — turn " +
                 "this off if a game needs it.",
@@ -327,6 +359,7 @@ internal fun StreamControlsPage(
 
         InfoRow(
             title = "Leaving a stream",
+            icon = Icons.Rounded.ExitToApp,
             value = "Hold Back, or press Start, Select, LB and RB together. The session " +
                 "keeps running on the PC so you can rejoin it; press Y on the PC in the " +
                 "Stream tab to stop it entirely.",
@@ -347,6 +380,7 @@ internal fun StreamHostsPage(
     Column(modifier = Modifier.fillMaxWidth()) {
         SwitchRow(
             title = "Find PCs automatically",
+            icon = Icons.Rounded.Radar,
             subtitle = "Sunshine announces itself on the network, so most PCs need no " +
                 "setting up. Announcements do not cross a VPN or a different " +
                 "subnet — over Tailscale, add the PC by address instead.",
@@ -360,6 +394,7 @@ internal fun StreamHostsPage(
 
         TextFieldRow(
             title = "This device's name",
+            icon = Icons.Rounded.Badge,
             subtitle = "What Loki is listed as in Sunshine's client list on the PC. " +
                 "Changing it does not undo a pairing.",
             value = stream.clientName,

@@ -1,5 +1,17 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
 import com.thor.core.model.Platform
 import com.thor.core.model.RomDirectory
@@ -59,6 +71,7 @@ internal fun PlatformsPage(
         RowDivider()
         ActionRow(
             title = "Scan library now",
+            icon = Icons.Rounded.Sync,
             subtitle = when (scanState) {
                 is SyncState.Scanning -> "Scanning ${scanState.label} — ${scanState.found} found"
                 is SyncState.Completed ->
@@ -86,6 +99,7 @@ internal fun RomFoldersPage(
     if (extras.isEmpty()) {
         InfoRow(
             title = "No extra folders",
+            icon = Icons.Rounded.FolderOff,
             value = "Platforms bring their own",
         )
         RowDivider()
@@ -138,6 +152,7 @@ internal fun ScanningPage(
 
     SwitchRow(
         title = "Look inside archives",
+        icon = Icons.Rounded.Archive,
         subtitle = "Scan .zip and .7z containers",
         checked = library.scanArchives,
         focused = focusedRow == 0,
@@ -146,6 +161,7 @@ internal fun ScanningPage(
     RowDivider()
     SwitchRow(
         title = "Detect duplicates",
+        icon = Icons.Rounded.ContentCopy,
         checked = library.detectDuplicates,
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateLibrary { it.copy(detectDuplicates = on) } },
@@ -153,6 +169,7 @@ internal fun ScanningPage(
     RowDivider()
     SwitchRow(
         title = "Group versions",
+        icon = Icons.Rounded.Layers,
         subtitle = "Collapse regional variants and revisions into one entry",
         checked = library.groupVersions,
         focused = focusedRow == 2,
@@ -161,6 +178,7 @@ internal fun ScanningPage(
     RowDivider()
     SwitchRow(
         title = "Show apps on the grid",
+        icon = Icons.Rounded.Apps,
         checked = library.showAppsOnGrid,
         focused = focusedRow == 3,
         onCheckedChange = { on -> viewModel.updateLibrary { it.copy(showAppsOnGrid = on) } },
@@ -168,6 +186,7 @@ internal fun ScanningPage(
     RowDivider()
     SwitchRow(
         title = "Hide system apps",
+        icon = Icons.Rounded.VisibilityOff,
         checked = library.hideSystemApps,
         focused = focusedRow == 4,
         onCheckedChange = { on -> viewModel.updateLibrary { it.copy(hideSystemApps = on) } },
@@ -177,6 +196,7 @@ internal fun ScanningPage(
     // mistake has no cell to long-press and no list that mentions it.
     SwitchRow(
         title = "Show hidden entries",
+        icon = Icons.Rounded.Visibility,
         subtitle = "Reveal hidden games and apps, dimmed, so they can be restored",
         checked = library.showHiddenEntries,
         focused = focusedRow == 5,
@@ -187,6 +207,7 @@ internal fun ScanningPage(
     RowDivider()
     ActionRow(
         title = "Scan library now",
+        icon = Icons.Rounded.Sync,
         subtitle = "Apply these settings to the whole library",
         focused = focusedRow == 6,
         trailingLabel = "Scan",
@@ -204,6 +225,7 @@ internal fun ScanningPage(
      */
     ActionRow(
         title = "Remove all games from the grid",
+        icon = Icons.Rounded.DeleteSweep,
         subtitle = gridClearResult
             ?: "Clears every game's cell. The games stay in your library and in " +
             "their platform folders — only the grid is emptied.",
@@ -221,6 +243,7 @@ internal fun SortingPage(settings: ThorSettings, focusedRow: Int, viewModel: Set
 
     ChoiceRow(
         title = "Default sort",
+        icon = Icons.Rounded.Sort,
         options = SortOrder.entries,
         selected = library.defaultSort,
         focused = focusedRow == 0,
@@ -230,6 +253,7 @@ internal fun SortingPage(settings: ThorSettings, focusedRow: Int, viewModel: Set
     RowDivider()
     SwitchRow(
         title = "Reverse order",
+        icon = Icons.Rounded.SwapVert,
         checked = library.sortDescending,
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateLibrary { it.copy(sortDescending = on) } },

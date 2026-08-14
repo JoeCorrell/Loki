@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Owned by the feature rather than by either app.
+
+      The session activity draws this while a stream is being negotiated, and it
+      moved here with the activity: a library that reaches into an application's
+      `R` compiles only for that application, which is exactly what stopped this
+      class being shared in the first place.
+    -->
+    <string name="stream_connecting">Starting %1$s…</string>
+    <string name="stream_stage">Connecting — %1$s…</string>
+</resources>

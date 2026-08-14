@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -95,6 +94,7 @@ import com.thor.core.ui.component.LauncherStatusBar
 import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.ui.profile.NotificationShadePanel
 import com.thor.core.ui.profile.ProfileClusterHeader
 import com.thor.core.ui.profile.ShellStatus
@@ -524,8 +524,8 @@ fun CouchScreen(
             // non-null while the shade fades out, so the panel animates away
             // with its contents instead of emptying first and then fading.
             visible = status.shadeOpen && !fullscreenSection,
-            enter = fadeIn(tween(SHADE_MS)),
-            exit = fadeOut(tween(SHADE_MS)),
+            enter = fadeIn(ThorTheme.motion.tweenSpec(ThorTheme.motion.scaledDuration(SHADE_MS))),
+            exit = fadeOut(ThorTheme.motion.tweenSpec(ThorTheme.motion.scaledDuration(SHADE_MS))),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -1414,9 +1414,9 @@ private fun CouchRailDeck(
     modifier: Modifier = Modifier,
 ) {
     val rail = rails.getOrNull(focus.rail) ?: return
-    val animationsEnabled = ThorTheme.materials.animationsEnabled
+    val motion = ThorTheme.motion
     val target = remember(focus.rail, rail) { CouchRailTarget(focus.rail, rail) }
-    val duration = if (animationsEnabled) RAIL_TRANSITION_MS else 0
+    val duration = motion.scaledDuration(RAIL_TRANSITION_MS)
 
     // The deck is the only thing here that knows how tall the shelf slot really
     // is, so the card size is decided once at this level and passed down.
@@ -1427,10 +1427,12 @@ private fun CouchRailDeck(
             targetState = target,
             transitionSpec = {
                 val direction = if (targetState.index >= initialState.index) 1 else -1
-                (slideInVertically(tween(duration)) { height -> direction * (height / 5) } +
-                    fadeIn(tween(duration))) togetherWith
-                    (slideOutVertically(tween(duration)) { height -> -direction * (height / 5) } +
-                        fadeOut(tween(duration)))
+                (slideInVertically(motion.tweenSpec(duration)) { height ->
+                    direction * (height / 5)
+                } + fadeIn(motion.tweenSpec(duration))) togetherWith
+                    (slideOutVertically(motion.tweenSpec(duration)) { height ->
+                        -direction * (height / 5)
+                    } + fadeOut(motion.tweenSpec(duration)))
             },
             contentKey = { it.rail.id },
             label = "couch-rail-change",
@@ -1485,6 +1487,7 @@ private fun CouchRailContent(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val listState = rememberLazyListState()
     val safeItem = focusedItem.coerceIn(0, (rail.entries.size - 1).coerceAtLeast(0))
 
@@ -1497,7 +1500,7 @@ private fun CouchRailContent(
                 visibleItem.offset + visibleItem.size <= layout.viewportEndOffset
             // Keeping a visible card in place avoids re-laying out and animating
             // the whole shelf on every D-pad repeat. Scroll only at an edge.
-            if (!fullyVisible) listState.animateScrollToItem(safeItem)
+            if (!fullyVisible) listState.revealItem(safeItem, animate = animateMotion)
         }
     }
 
@@ -1589,6 +1592,7 @@ internal fun CouchCard(
     resting: Boolean = false,
 ) {
     val colors = ThorTheme.colors
+    val motion = ThorTheme.motion
     /*
      * The pointer moves the shelf cursor rather than merely lighting a card.
      *
@@ -1611,17 +1615,17 @@ internal fun CouchCard(
     val focusColor = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val scale by animateFloatAsState(
         targetValue = if (lit) 1.035f else 1f,
-        animationSpec = tween(160),
+        animationSpec = motion.tweenSpec(motion.selectionMillis),
         label = "couch-card-focus",
     )
     val imageAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0.88f,
-        animationSpec = tween(160),
+        animationSpec = motion.tweenSpec(motion.selectionMillis),
         label = "couch-card-depth",
     )
     val elevation by animateDpAsState(
         targetValue = if (lit) 10.dp else 0.dp,
-        animationSpec = tween(160),
+        animationSpec = motion.tweenSpec(motion.selectionMillis),
         label = "couch-card-elevation",
     )
     val shape = ThorTheme.shapes.small

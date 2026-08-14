@@ -1,4 +1,4 @@
-package com.thor.launcher.stream
+package com.thor.feature.stream.session
 
 import android.content.Context
 import android.hardware.display.DisplayManager

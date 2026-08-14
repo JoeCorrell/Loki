@@ -1,5 +1,23 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Animation
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Crop
+import androidx.compose.material.icons.rounded.Dock
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Label
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Opacity
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SpaceBar
+import androidx.compose.material.icons.rounded.Style
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import com.thor.core.model.AnimatedWallpaper
@@ -35,6 +53,7 @@ internal fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: S
 
     ChoiceRow(
         title = "Background effect",
+        icon = Icons.Rounded.AutoAwesome,
         subtitle = "Animated layer drawn behind both screens",
         options = AnimatedWallpaper.entries,
         selected = personalization.animatedWallpaper,
@@ -97,6 +116,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
      */
     ChoiceRow(
         title = "Home shows",
+        icon = Icons.Rounded.Home,
         subtitle = settings.display.homeLayout.description,
         options = HomeLayout.entries,
         selected = settings.display.homeLayout,
@@ -112,6 +132,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     // through exactly this list, so the two controls now agree.
     ChoiceRow(
         title = "Layout",
+        icon = Icons.Rounded.GridView,
         subtitle = if (cards) {
             "Used inside a system, where its games are laid out"
         } else {
@@ -140,6 +161,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     IntSliderRow(
         title = "Icon spacing",
+        icon = Icons.Rounded.SpaceBar,
         subtitle = "Percent of a cell left as gutter",
         value = grid.spacingDp,
         range = 0..48,
@@ -150,6 +172,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     ChoiceRow(
         title = "Icon shape",
+        icon = Icons.Rounded.Crop,
         options = IconShape.entries,
         selected = grid.iconShape,
         focused = focusedRow == 4,
@@ -159,6 +182,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     SwitchRow(
         title = "Show labels",
+        icon = Icons.Rounded.Label,
         checked = grid.showLabels,
         focused = focusedRow == 5,
         onCheckedChange = { on -> viewModel.updateGrid { it.copy(showLabels = on) } },
@@ -171,6 +195,7 @@ internal fun DockPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
 
     SwitchRow(
         title = "Show dock",
+        icon = Icons.Rounded.Dock,
         checked = dock.visible,
         focused = focusedRow == 0,
         onCheckedChange = { on -> viewModel.updateDock { it.copy(visible = on) } },
@@ -196,6 +221,7 @@ internal fun DockPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     SwitchRow(
         title = "Translucent background",
+        icon = Icons.Rounded.Opacity,
         subtitle = "Off makes the dock solid, which reads better over artwork",
         checked = dock.blurEnabled,
         focused = focusedRow == 3,
@@ -204,6 +230,7 @@ internal fun DockPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     ChoiceRow(
         title = "Shape",
+        icon = Icons.Rounded.Crop,
         subtitle = "Square matches the grid's own cells",
         options = DockStyle.entries,
         selected = dock.style,
@@ -214,6 +241,7 @@ internal fun DockPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     RowDivider()
     SwitchRow(
         title = "Auto-hide",
+        icon = Icons.Rounded.VisibilityOff,
         subtitle = "Only show the dock when a slot is selected",
         checked = dock.autoHide,
         focused = focusedRow == 5,
@@ -227,6 +255,7 @@ internal fun CursorPage(settings: ThorSettings, focusedRow: Int, viewModel: Sett
 
     ChoiceRow(
         title = "Style",
+        icon = Icons.Rounded.Style,
         options = CursorStyle.entries,
         selected = personalization.cursorStyle,
         focused = focusedRow == 0,
@@ -236,6 +265,7 @@ internal fun CursorPage(settings: ThorSettings, focusedRow: Int, viewModel: Sett
     RowDivider()
     ChoiceRow(
         title = "Animation",
+        icon = Icons.Rounded.Animation,
         options = CursorAnimation.entries,
         selected = personalization.cursorAnimation,
         focused = focusedRow == 1,
@@ -283,6 +313,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     ChoiceRow(
         title = "Motion style",
+        icon = Icons.Rounded.Animation,
         subtitle = "The character of every transition: its easing and its overshoot",
         options = MOTION_OPTIONS,
         selected = personalization.motionOverride,
@@ -307,6 +338,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     ChoiceRow(
         title = "Clock",
+        icon = Icons.Rounded.Schedule,
         options = ClockStyle.entries,
         selected = personalization.clockStyle,
         focused = focusedRow == 3,
@@ -316,6 +348,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     SwitchRow(
         title = "Status bar",
+        icon = Icons.Rounded.Notifications,
         subtitle = "Clock and battery above the grid",
         checked = personalization.showStatusBar,
         focused = focusedRow == 4,
@@ -326,6 +359,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     ChoiceRow(
         title = "Folder style",
+        icon = Icons.Rounded.Folder,
         options = FolderStyle.entries,
         selected = personalization.folderStyle,
         focused = focusedRow == 5,
@@ -335,6 +369,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     SwitchRow(
         title = "Page indicators",
+        icon = Icons.Rounded.MoreHoriz,
         checked = personalization.showPageIndicators,
         focused = focusedRow == 6,
         onCheckedChange = { on ->
@@ -350,6 +385,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
      */
     ChoiceRow(
         title = "Info panel edge",
+        icon = Icons.Rounded.Layers,
         subtitle = InfoPanelStyle.entries
             .firstOrNull { it == personalization.infoPanelStyle }
             ?.description,
@@ -364,6 +400,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     SwitchRow(
         title = "Autoplay trailers",
+        icon = Icons.Rounded.PlayCircle,
         subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
             "L1 or R1 shows screenshots instead",
         checked = personalization.autoplayTrailers,

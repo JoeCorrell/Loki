@@ -63,6 +63,7 @@ internal fun CouchWallpaper(
     wallpaperImageUri: String? = null,
 ) {
     val colors = ThorTheme.colors
+    val motion = ThorTheme.motion
     val base = colors.background
 
     if (style == CouchWallpaperStyle.THEME) {
@@ -96,7 +97,10 @@ internal fun CouchWallpaper(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(style.periodMillis, easing = LinearEasing),
+                animation = tween(
+                    motion.scaledDuration(style.periodMillis),
+                    easing = LinearEasing,
+                ),
                 // Restart for the styles built to wrap at 1f; the rest sway.
                 repeatMode = if (style.wraps) RepeatMode.Restart else RepeatMode.Reverse,
             ),
@@ -110,7 +114,7 @@ internal fun CouchWallpaper(
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(
-                    (style.periodMillis * DRIFT_PERIOD_RATIO).toInt(),
+                    motion.scaledDuration((style.periodMillis * DRIFT_PERIOD_RATIO).toInt()),
                     easing = LinearEasing,
                 ),
                 repeatMode = RepeatMode.Reverse,

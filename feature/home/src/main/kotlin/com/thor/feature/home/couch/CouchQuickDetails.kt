@@ -6,7 +6,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -60,6 +59,7 @@ import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
+import com.thor.core.ui.motion.revealBy
 import com.thor.feature.home.BottomScreen
 import com.thor.feature.home.LauncherViewModel
 import com.thor.feature.home.shell.icon
@@ -188,6 +188,7 @@ private fun DetailsPage(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val animateMotion = ThorTheme.materials.animationsEnabled
     val game = entry as? GameEntry
     val artwork = game?.metadata?.artwork
     val accent = platform?.let { Color(it.accentArgb) } ?: colors.cursor
@@ -207,7 +208,7 @@ private fun DetailsPage(
      */
     LaunchedEffect(scroll) {
         if (scroll.tick > 0 && scroll.direction != 0) {
-            reading.animateScrollBy(scroll.direction * step)
+            reading.revealBy(scroll.direction * step, animate = animateMotion)
         }
     }
 

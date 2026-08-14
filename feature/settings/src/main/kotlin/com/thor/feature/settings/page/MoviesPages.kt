@@ -1,5 +1,21 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.HdrOn
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -60,6 +76,7 @@ internal fun MoviesCataloguePage(
          */
         ChoiceRow(
             title = "Debrid service",
+            icon = Icons.Rounded.Cloud,
             subtitle = "What turns a torrent into an instant stream.",
             options = DebridService.entries,
             selected = media.debridService,
@@ -73,6 +90,7 @@ internal fun MoviesCataloguePage(
 
         TextFieldRow(
             title = "${media.debridService.label} ${media.debridService.credentialLabel}",
+            icon = Icons.Rounded.Key,
             subtitle = "Turns a torrent into an instant stream. Without it, sources " +
                 "are listed but cannot be opened.",
             value = media.debridToken,
@@ -100,6 +118,7 @@ internal fun MoviesCataloguePage(
          */
         ActionRow(
             title = "Check ${media.debridService.label}",
+            icon = Icons.Rounded.NetworkCheck,
             subtitle = debridStatus ?: "Confirms the ${media.debridService.credentialLabel} " +
                 "works and the account is active.",
             focused = focusedRow == 2,
@@ -130,6 +149,7 @@ internal fun MoviesCataloguePage(
 
             TextFieldRow(
                 title = "Addon ${index + 1}",
+                icon = Icons.Rounded.Extension,
                 subtitle = if (addon.name.isNotBlank()) {
                     "${addon.name} — installed"
                 } else {
@@ -153,6 +173,7 @@ internal fun MoviesCataloguePage(
              */
             ActionRow(
                 title = "Test this addon",
+                icon = Icons.Rounded.NetworkCheck,
                 subtitle = addonStatus[index]
                     ?: "Asks it for a stream it certainly has, which is the only " +
                     "way to tell a working addon from a URL that merely looks right.",
@@ -164,6 +185,7 @@ internal fun MoviesCataloguePage(
 
             ActionRow(
                 title = "Remove this addon",
+                icon = Icons.Rounded.Delete,
                 focused = focusedRow == base + 2,
                 trailingLabel = "Remove",
                 destructive = true,
@@ -197,6 +219,7 @@ internal fun MoviesCataloguePage(
 
             TextFieldRow(
                 title = "Indexer ${index + 1} — name",
+                icon = Icons.Rounded.Dns,
                 subtitle = indexer.status(),
                 value = indexer.name,
                 placeholder = "Whatever you want to call it",
@@ -209,6 +232,7 @@ internal fun MoviesCataloguePage(
 
             TextFieldRow(
                 title = "Torznab URL",
+                icon = Icons.Rounded.Link,
                 subtitle = "The base endpoint, without the trailing /api. Jackett " +
                     "shows this as “Torznab Feed” on each configured indexer.",
                 value = indexer.url,
@@ -222,6 +246,7 @@ internal fun MoviesCataloguePage(
 
             TextFieldRow(
                 title = "API key",
+                icon = Icons.Rounded.Key,
                 subtitle = "From the same page as the URL.",
                 value = indexer.apiKey,
                 placeholder = "Required",
@@ -245,6 +270,7 @@ internal fun MoviesCataloguePage(
              */
             ActionRow(
                 title = "Test this indexer",
+                icon = Icons.Rounded.NetworkCheck,
                 subtitle = indexerStatus[index]
                     ?: "Asks it directly, which is the only way to tell a working " +
                     "endpoint from a filled-in one.",
@@ -256,6 +282,7 @@ internal fun MoviesCataloguePage(
 
             ActionRow(
                 title = "Remove this indexer",
+                icon = Icons.Rounded.Delete,
                 focused = focusedRow == base + 4,
                 destructive = true,
                 trailingLabel = "Remove",
@@ -266,6 +293,7 @@ internal fun MoviesCataloguePage(
 
         ActionRow(
             title = "Add a torrent indexer",
+            icon = Icons.Rounded.Add,
             subtitle = "The other route: a Torznab endpoint — Jackett, Prowlarr or " +
                 "NZBHydra — searched by Loki directly. Needs a URL and a key per " +
                 "site, so an addon is usually less work.",
@@ -310,6 +338,7 @@ internal fun MoviesPlaybackPage(
     Column(modifier = Modifier.fillMaxWidth()) {
         SwitchRow(
             title = "Choose a source automatically",
+            icon = Icons.Rounded.AutoAwesome,
             subtitle = "Play the best match instead of opening the list. The list is " +
                 "always one press away.",
             checked = media.autoSelectSource,
@@ -320,6 +349,7 @@ internal fun MoviesPlaybackPage(
 
         ChoiceRow(
             title = "Preferred resolution",
+            icon = Icons.Rounded.HighQuality,
             subtitle = "An exact match wins. Below this beats above it — a 4K stream " +
                 "costs bandwidth and decode for a difference this panel cannot show.",
             options = PICKABLE_RESOLUTIONS,
@@ -334,6 +364,7 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Only instantly playable sources",
+            icon = Icons.Rounded.FlashOn,
             /*
              * Says so when the selected service cannot answer.
              *
@@ -359,6 +390,7 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Prefer HDR",
+            icon = Icons.Rounded.HdrOn,
             subtitle = "Off by default: HDR on a panel that cannot present it looks " +
                 "washed out, which reads as a broken stream.",
             checked = media.preferHdr,
@@ -369,6 +401,7 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Skip dubbed releases",
+            icon = Icons.Rounded.RecordVoiceOver,
             checked = media.avoidDubbed,
             focused = focusedRow == 4,
             onCheckedChange = { on -> viewModel.updateMedia { it.copy(avoidDubbed = on) } },
@@ -389,6 +422,7 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Play the next episode",
+            icon = Icons.Rounded.SkipNext,
             subtitle = "Roll straight into it when one finishes.",
             checked = media.autoPlayNextEpisode,
             focused = focusedRow == 6,
@@ -414,6 +448,7 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Resume automatically",
+            icon = Icons.Rounded.PlayCircle,
             subtitle = "Pick up where you stopped, without asking.",
             checked = media.resumeAutomatically,
             focused = focusedRow == 8,

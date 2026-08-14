@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.motion.revealItem
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.pointer.pointerHover
@@ -202,6 +203,7 @@ private fun CouchHostGrid(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val animateMotion = ThorTheme.materials.animationsEnabled
     // Every host, and then the add tile, laid out in rows of the grid's width.
     val gridRows = remember(state.hosts.size) {
         (0..state.hosts.size).chunked(STREAM_COUCH_COLUMNS)
@@ -209,8 +211,9 @@ private fun CouchHostGrid(
 
     LaunchedEffect(state.cursor, gridRows.size) {
         if (gridRows.isNotEmpty()) {
-            listState.animateScrollToItem(
+            listState.revealItem(
                 (state.cursor / STREAM_COUCH_COLUMNS).coerceIn(0, gridRows.lastIndex),
+                animate = animateMotion,
             )
         }
     }

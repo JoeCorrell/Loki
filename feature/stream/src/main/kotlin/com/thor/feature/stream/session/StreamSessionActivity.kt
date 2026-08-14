@@ -1,4 +1,4 @@
-package com.thor.launcher.stream
+package com.thor.feature.stream.session
 
 import android.graphics.Color
 import android.os.Bundle
@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.ui.feedback.ThorFeedback
+import com.thor.feature.stream.R
 import com.thor.data.stream.SessionState
 import com.thor.core.model.SessionQuality
 import com.thor.data.stream.StreamInput
@@ -153,7 +154,7 @@ class StreamSessionActivity : ComponentActivity() {
             setTextColor(Color.WHITE)
             textSize = STATUS_TEXT_SP
             text = getString(
-                com.thor.launcher.R.string.stream_connecting,
+                R.string.stream_connecting,
                 sessions.pendingTitle.orEmpty(),
             )
         }
@@ -279,7 +280,7 @@ class StreamSessionActivity : ComponentActivity() {
                         is SessionState.Starting -> {
                             status.visibility = View.VISIBLE
                             status.text = getString(
-                                com.thor.launcher.R.string.stream_stage,
+                                R.string.stream_stage,
                                 state.stage,
                             )
                         }

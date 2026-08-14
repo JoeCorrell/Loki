@@ -1,6 +1,9 @@
 package com.thor.data.files
 
 import com.google.common.truth.Truth.assertThat
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -8,6 +11,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.ByteArrayInputStream
 
 /**
  * Copying and moving, against a real filesystem.
@@ -216,5 +220,117 @@ class TransferTest {
 
         assertThat(lastTotal).isEqualTo(4096L)
         assertThat(lastDone).isEqualTo(lastTotal)
+    }
+
+    @Test
+    fun `a failed copy leaves the source intact and no partial destination`() = runTest {
+        val from = folder("from")
+        val to = folder("to")
+        val original = ByteArray(2 * 1024 * 1024) { index -> (index % 251).toByte() }
+        val rom = File(from, "disc.chd").apply { writeBytes(original) }
+
+        val result = repository.transfer(
+            paths = listOf(rom.absolutePath),
+            destination = to.absolutePath,
+            move = false,
+            onProgress = { copied, _ ->
+                if (copied > 0L) error("simulated destination failure")
+            },
+        )
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(rom.readBytes()).isEqualTo(original)
+        assertThat(File(to, "disc.chd").exists()).isFalse()
+        assertThat(to.list().orEmpty().none { it.startsWith(".loki-part-") }).isTrue()
+    }
+
+    @Test
+    fun `many name collisions never fall back to overwriting the first file`() = runTest {
+        val from = folder("from")
+        val to = folder("to")
+        file(from, "game.sfc", "new")
+        file(to, "game.sfc", "original")
+        (2..100).forEach { number -> file(to, "game.sfc ($number)", "keep-$number") }
+
+        val result = repository.transfer(
+            paths = listOf(File(from, "game.sfc").absolutePath),
+            destination = to.absolutePath,
+            move = false,
+        )
+
+        assertThat(result).isEqualTo(FileResult.Done)
+        assertThat(File(to, "game.sfc").readText()).isEqualTo("original")
+        assertThat(File(to, "game.sfc (100)").readText()).isEqualTo("keep-100")
+        assertThat(File(to, "game.sfc (101)").readText()).isEqualTo("new")
+    }
+
+    @Test
+    fun `a move never deletes its source when destination verification fails`() = runTest {
+        val to = folder("to")
+        val sourcePath = "smb://nas/share/game.sfc"
+        val remote = mockk<SmbFileSource>()
+        every { remote.handles(any()) } answers {
+            firstArg<String>().startsWith("smb://")
+        }
+        every { remote.nameOf(sourcePath) } returns "game.sfc"
+        coEvery { remote.exists(sourcePath) } returns true
+        coEvery { remote.sizeOnDisk(sourcePath) } returns 100L
+        coEvery { remote.isDirectory(sourcePath) } returns false
+        coEvery { remote.openRead(sourcePath) } returns
+            ByteArrayInputStream("too short".toByteArray())
+        coEvery { remote.deleteTree(sourcePath) } returns true
+
+        val crossSource = FileRepository(
+            local = LocalFileSource(),
+            remote = remote,
+            discovery = mockk(relaxed = true),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+
+        val result = crossSource.transfer(
+            paths = listOf(sourcePath),
+            destination = to.absolutePath,
+            move = true,
+        )
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(File(to, "game.sfc").exists()).isFalse()
+        assertThat(to.list().orEmpty().none { it.startsWith(".loki-part-") }).isTrue()
+        coVerify(exactly = 0) { remote.deleteTree(sourcePath) }
+    }
+
+    @Test
+    fun `a move keeps both copies and reports when source removal fails`() = runTest {
+        val to = folder("to")
+        val sourcePath = "smb://nas/share/game.sfc"
+        val bytes = "cartridge".toByteArray()
+        val remote = mockk<SmbFileSource>()
+        every { remote.handles(any()) } answers {
+            firstArg<String>().startsWith("smb://")
+        }
+        every { remote.nameOf(sourcePath) } returns "game.sfc"
+        coEvery { remote.exists(sourcePath) } returns true
+        coEvery { remote.sizeOnDisk(sourcePath) } returns bytes.size.toLong()
+        coEvery { remote.isDirectory(sourcePath) } returns false
+        coEvery { remote.openRead(sourcePath) } returns ByteArrayInputStream(bytes)
+        coEvery { remote.deleteTree(sourcePath) } returns false
+
+        val crossSource = FileRepository(
+            local = LocalFileSource(),
+            remote = remote,
+            discovery = mockk(relaxed = true),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+
+        val result = crossSource.transfer(
+            paths = listOf(sourcePath),
+            destination = to.absolutePath,
+            move = true,
+        )
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat((result as FileResult.Failed).reason).contains("both copies were kept")
+        assertThat(File(to, "game.sfc").readBytes()).isEqualTo(bytes)
+        coVerify(exactly = 1) { remote.deleteTree(sourcePath) }
     }
 }

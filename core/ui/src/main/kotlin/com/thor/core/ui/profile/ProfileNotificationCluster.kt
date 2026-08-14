@@ -1,7 +1,6 @@
 package com.thor.core.ui.profile
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -80,6 +79,7 @@ fun ProfileNotificationCluster(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val motion = ThorTheme.motion
     val accent = profile?.let { Color(it.accentArgb) } ?: colors.cursor
     val notifications = (access as? NotificationAccess.Connected)?.notifications.orEmpty()
 
@@ -100,8 +100,10 @@ fun ProfileNotificationCluster(
             visible = expanded,
             // Expanding downward from the header is the shade metaphor; a fade
             // alone would read as a popup that happens to be underneath it.
-            enter = expandVertically(tween(SHADE_MS)) + fadeIn(tween(SHADE_MS)),
-            exit = shrinkVertically(tween(SHADE_MS)) + fadeOut(tween(SHADE_MS)),
+            enter = expandVertically(motion.tweenSpec(motion.scaledDuration(SHADE_MS))) +
+                fadeIn(motion.tweenSpec(motion.scaledDuration(SHADE_MS))),
+            exit = shrinkVertically(motion.tweenSpec(motion.scaledDuration(SHADE_MS))) +
+                fadeOut(motion.tweenSpec(motion.scaledDuration(SHADE_MS))),
         ) {
             NotificationShadePanel(
                 profile = profile,
@@ -647,4 +649,3 @@ private const val BADGE_SIZE = 15
 private const val BADGE_MAX = 9
 private const val NOTIFICATION_BAR_HEIGHT = 30
 private const val NOTIFICATION_BODY_LINES = 2
-

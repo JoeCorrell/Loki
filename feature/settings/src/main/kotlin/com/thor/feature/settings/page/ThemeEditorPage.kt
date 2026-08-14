@@ -1,5 +1,16 @@
 package com.thor.feature.settings.page
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Animation
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.RoundedCorner
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -89,6 +100,7 @@ private fun ThemeListRows(
 
     ChoiceRow(
         title = "New theme from",
+        icon = Icons.Rounded.Palette,
         subtitle = "Copies a theme's colours and material, then opens it for editing",
         options = settings.personalization.galleryRecipes,
         // Nothing is "selected" here — the row is an action wearing a chooser, so
@@ -188,6 +200,7 @@ private fun ThemeParameterRows(
 
     TextFieldRow(
         title = "Name",
+        icon = Icons.Rounded.Badge,
         subtitle = "What the gallery calls it",
         value = theme.name,
         focused = focusedRow == 0,
@@ -243,6 +256,7 @@ private fun ThemeParameterRows(
 
     ChoiceRow(
         title = "Panels",
+        icon = Icons.Rounded.Layers,
         subtitle = "What every panel, card and cell is made of",
         options = SurfaceStyle.entries,
         selected = theme.surfaceStyle,
@@ -257,6 +271,7 @@ private fun ThemeParameterRows(
     RowDivider()
     IntSliderRow(
         title = "Corners",
+        icon = Icons.Rounded.RoundedCorner,
         subtitle = "How round every panel, card and cell is",
         value = theme.cornerRadiusDp,
         range = CustomTheme.CORNER_RADIUS_DP,
@@ -285,6 +300,7 @@ private fun ThemeParameterRows(
 
     ChoiceRow(
         title = "Motion",
+        icon = Icons.Rounded.Animation,
         subtitle = "How fast this theme's animations run",
         options = MotionStyle.entries,
         selected = theme.motion,
@@ -295,6 +311,7 @@ private fun ThemeParameterRows(
     RowDivider()
     ChoiceRow(
         title = "Wallpaper",
+        icon = Icons.Rounded.Wallpaper,
         subtitle = "Applied when this theme is picked. Changeable afterwards like " +
             "any other.",
         options = AnimatedWallpaper.entries,
@@ -309,6 +326,7 @@ private fun ThemeParameterRows(
 
     ActionRow(
         title = "Randomise",
+        icon = Icons.Rounded.Shuffle,
         subtitle = "Rolls a new colour and material. Everything stays editable.",
         focused = focusedRow == 8,
         trailingLabel = "Roll",
@@ -325,6 +343,7 @@ private fun ThemeParameterRows(
     RowDivider()
     ActionRow(
         title = "Duplicate",
+        icon = Icons.Rounded.ContentCopy,
         subtitle = "Make a copy and edit that instead, leaving this one alone",
         focused = focusedRow == 10,
         trailingLabel = "Copy",
@@ -333,6 +352,7 @@ private fun ThemeParameterRows(
     RowDivider()
     ActionRow(
         title = "Delete this theme",
+        icon = Icons.Rounded.Delete,
         subtitle = "Cannot be undone. The launcher falls back to the built-in " +
             "theme underneath.",
         focused = focusedRow == 11,
@@ -343,6 +363,7 @@ private fun ThemeParameterRows(
     RowDivider()
     ActionRow(
         title = "Done",
+        icon = Icons.Rounded.Check,
         subtitle = "Back to the list. The theme stays applied.",
         focused = focusedRow == 12,
         trailingLabel = "Done",

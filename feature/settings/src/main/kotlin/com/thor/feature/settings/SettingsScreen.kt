@@ -51,6 +51,7 @@ import com.thor.feature.settings.component.row.LocalHorizontalRowRegistration
 import com.thor.feature.settings.component.row.LocalRowStep
 import com.thor.feature.settings.component.SettingsTextButton
 import com.thor.feature.settings.component.revealWhenFocused
+import com.thor.feature.settings.component.panel.PageHero
 import com.thor.feature.settings.page.ABOUT_ROWS
 import com.thor.feature.settings.page.AboutPane
 import com.thor.feature.settings.page.SettingsPageContent
@@ -411,6 +412,27 @@ fun SettingsScreen(
                             LocalRowStep provides horizontalStep,
                             LocalHorizontalRowRegistration provides horizontalRowRegistration,
                         ) {
+                            /*
+                             * Every page opens by saying what it is.
+                             *
+                             * The eyebrow names the *category* rather than
+                             * repeating the page title underneath itself, so the
+                             * hero answers "where am I" and not just "what is
+                             * this" — which is the question somebody three levels
+                             * into a settings tree is actually asking. The art on
+                             * the right belongs to the category too, so walking
+                             * between pages within one keeps the same picture and
+                             * only the words change.
+                             */
+                            PageHero(
+                                eyebrow = openPage!!.category.title.uppercase(),
+                                title = openPage!!.title,
+                                subtitle = openPage!!.summary,
+                                icon = openPage!!.category.icon,
+                                art = openPage!!.category.art,
+                                tint = ThorTheme.colors.tint(openPage!!.category.slot),
+                            )
+
                             SettingsPageContent(
                                 page = openPage!!,
                                 settings = settings,
@@ -822,21 +844,32 @@ private fun CategoryRow(
                     .background(Brush.verticalGradient(colors.accentStops)),
             )
         }
-                    Box(
-                modifier = Modifier
-                    .size(if (compact) 26.dp else 44.dp)
-                    .clip(ThorTheme.shapes.small)
-                    .background(
-                        if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = category.icon,
-                    contentDescription = null,
-                    tint = if (selected) colors.cursor else colors.onSurfaceVariant,
-                    modifier = Modifier.size(if (compact) 15.dp else 23.dp),
-                )
+        /*
+         * The tile carries the category's own colour, not the accent.
+         *
+         * That is the whole point of the twelve-slot wheel: Games is green and
+         * Controls is red *on the same theme*, so the rail is scanned by colour
+         * before it is read. Unselected it is held back to a wash so eleven
+         * tinted tiles read as a list rather than as a paint chart, and the
+         * selected one comes up to full strength.
+         */
+        val tint = colors.tint(category.slot)
+
+        Box(
+            modifier = Modifier
+                .size(if (compact) 26.dp else 44.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(
+                    if (selected) tint.copy(alpha = 0.18f) else colors.surfaceElevated,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = category.icon,
+                contentDescription = null,
+                tint = if (selected) tint else tint.copy(alpha = 0.72f),
+                modifier = Modifier.size(if (compact) 15.dp else 23.dp),
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -856,6 +889,15 @@ private fun CategoryRow(
                 )
             }
         }
+
+        // Says the row leads somewhere, which a title and a summary do not: every
+        // other two-line block in Settings is a control that acts in place.
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = if (selected) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(if (compact) 14.dp else 18.dp),
+        )
     }
 }
 

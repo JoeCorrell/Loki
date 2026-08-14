@@ -1347,6 +1347,9 @@ class SettingsViewModel @Inject constructor(
     private val _scanningNetwork = MutableStateFlow(false)
     val scanningNetwork: StateFlow<Boolean> = _scanningNetwork.asStateFlow()
 
+    /** Monotonic time of the last discovery started from this page. */
+    private var lastNetworkScanNanos = Long.MIN_VALUE
+
     /** Adds an empty server and opens it, so the page lands on the fields. */
     fun addSmbServer() {
         viewModelScope.launchSafely(TAG) {
@@ -1364,12 +1367,41 @@ class SettingsViewModel @Inject constructor(
      * dimmed: this list is a list of things to *add*, and an entry that cannot be
      * added is a row the cursor has to walk past for no reason.
      */
-    fun scanForSmbServers() {
-        if (_scanningNetwork.value) return
+    /**
+     * Starts discovery when the setup page appears.
+     *
+     * The subnet sweep is useful but not a background service: it runs once on
+     * entry, then observes a cooldown if the user moves between pages. The
+     * visible refresh action deliberately bypasses that cooldown.
+     */
+    fun onNetworkSharesShown() {
+        val now = System.nanoTime()
+        val recentlyScanned = lastNetworkScanNanos != Long.MIN_VALUE &&
+            now - lastNetworkScanNanos < AUTO_SCAN_COOLDOWN_NANOS
+        if (_discoveredServers.value.isNotEmpty() || recentlyScanned) return
+        startSmbScan(automatic = true)
+    }
 
-        viewModelScope.launchSafely(TAG) {
-            _scanningNetwork.value = true
-            _smbStatus.value = "Looking for servers on this network…"
+    fun scanForSmbServers() = startSmbScan(automatic = false)
+
+    private fun startSmbScan(automatic: Boolean) {
+        if (_scanningNetwork.value) return
+        // Set before launching so two composition/click events cannot race two
+        // full subnet sweeps into existence.
+        _scanningNetwork.value = true
+        lastNetworkScanNanos = System.nanoTime()
+
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _smbStatus.value = error.message ?: "The network scan could not finish."
+            },
+        ) {
+            _smbStatus.value = if (automatic) {
+                "Scanning this network automatically…"
+            } else {
+                "Looking for servers on this network…"
+            }
             try {
                 val known = settingsRepository.current().smbServers
                     .map { it.host.trim().lowercase() }
@@ -2432,6 +2464,9 @@ class SettingsViewModel @Inject constructor(
 
         /** Log tag for guarded background work. */
         const val TAG = "Settings"
+
+        /** Prevent page back-and-forth from repeatedly sweeping the same LAN. */
+        const val AUTO_SCAN_COOLDOWN_NANOS = 120_000_000_000L
 
         /** Distinct codes kept by the button tester. */
         const val MAX_CAPTURED_KEYS = 6

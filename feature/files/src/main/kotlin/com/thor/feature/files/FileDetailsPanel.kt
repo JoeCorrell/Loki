@@ -48,6 +48,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,6 +90,7 @@ fun FileActionPanel(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val motion = ThorTheme.motion
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         if (state.status is FilesStatus.NoAccess) {
@@ -132,8 +137,8 @@ fun FileActionPanel(
 
         AnimatedVisibility(
             visible = state.transfer != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(motion.tweenSpec(motion.panelMillis)),
+            exit = fadeOut(motion.tweenSpec(motion.panelMillis)),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             state.transfer?.let { TransferBar(it) }
@@ -357,11 +362,13 @@ private fun LayoutToggle(layout: FilesActionLayout, onChange: (FilesActionLayout
     Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingTiny)) {
         ToggleButton(
             icon = Icons.Rounded.GridView,
+            label = "Grid actions",
             active = layout == FilesActionLayout.GRID,
             onClick = { onChange(FilesActionLayout.GRID) },
         )
         ToggleButton(
             icon = Icons.AutoMirrored.Rounded.List,
+            label = "List actions",
             active = layout == FilesActionLayout.LIST,
             onClick = { onChange(FilesActionLayout.LIST) },
         )
@@ -369,7 +376,12 @@ private fun LayoutToggle(layout: FilesActionLayout, onChange: (FilesActionLayout
 }
 
 @Composable
-private fun ToggleButton(icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+private fun ToggleButton(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
 
@@ -383,12 +395,13 @@ private fun ToggleButton(icon: ImageVector, active: Boolean, onClick: () -> Unit
                 colors.outline.copy(alpha = if (active) 0f else RULE_ALPHA),
                 shape,
             )
-            .clickable(onClick = onClick),
+            .semantics { selected = active }
+            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = label,
             tint = if (active) colors.cursor else colors.onSurfaceVariant,
             modifier = Modifier.size(TOGGLE_GLYPH.dp),
         )
@@ -410,6 +423,7 @@ private fun ToggleButton(icon: ImageVector, active: Boolean, onClick: () -> Unit
 @Composable
 private fun ActionGrid(state: FilesUiState, actions: FileBrowserActions) {
     val dimens = ThorTheme.dimens
+    val animationsEnabled = ThorTheme.materials.animationsEnabled
     val gridState = rememberLazyGridState()
     val focusedPane = state.pane == FilesPane.ACTIONS
     val list = state.actionLayout == FilesActionLayout.LIST
@@ -457,7 +471,11 @@ private fun ActionGrid(state: FilesUiState, actions: FileBrowserActions) {
         // Only ever needed in list mode now; the grid has nowhere to scroll to.
         LaunchedEffect(state.actionCursor, focusedPane) {
             if (list && focusedPane && state.actionCursor < GRID_ACTIONS.size) {
-                gridState.animateScrollToItem(state.actionCursor)
+                if (animationsEnabled) {
+                    gridState.animateScrollToItem(state.actionCursor)
+                } else {
+                    gridState.scrollToItem(state.actionCursor)
+                }
             }
         }
 
@@ -549,7 +567,12 @@ private fun ActionButton(
             shape,
         )
         .thorCursor(focused = focused, shape = shape)
-        .clickable(enabled = enabled, onClick = onClick)
+        .clickable(
+            enabled = enabled,
+            onClickLabel = action.label,
+            role = Role.Button,
+            onClick = onClick,
+        )
 
     if (asRow) {
         Row(
@@ -650,10 +673,14 @@ private fun HiddenSwitch(
                 shape,
             )
             .thorCursor(focused = focused, shape = shape)
-            .clickable {
-                actions.onFocusAction(index)
-                actions.onPerformAction(FileAction.HIDDEN)
-            }
+            .semantics { stateDescription = if (on) "On" else "Off" }
+            .clickable(
+                role = Role.Switch,
+                onClick = {
+                    actions.onFocusAction(index)
+                    actions.onPerformAction(FileAction.HIDDEN)
+                },
+            )
             .padding(horizontal = dimens.spacingSmall),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacing),

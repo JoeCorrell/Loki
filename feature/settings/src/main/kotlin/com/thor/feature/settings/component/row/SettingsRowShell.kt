@@ -17,18 +17,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.feature.settings.component.SettingsCard
+import com.thor.feature.settings.component.panel.IconTile
 
 /**
  * Shared row shell.
  *
- * Title and description on the left, one control on the right. Every settings
- * row uses this, so a pane reads as a single column of labels with a single
- * column of controls rather than a mix of inline widgets at varying heights.
+ * A tile, a title and a description on the left, one control on the right. Every
+ * settings row uses this, so a pane reads as a single column of labels with a
+ * single column of controls rather than a mix of inline widgets at varying
+ * heights — and so a change of look here is a change of look everywhere, which
+ * is how the whole of Settings was restyled without editing twenty page files.
+ *
+ * @param icon the glyph in the row's tile. Null falls back to a plain marker
+ *   rather than to a gap: rows are adopting icons page by page, and a row that
+ *   simply lost its left edge while its neighbours kept theirs would read as
+ *   broken alignment rather than as an absent decoration.
  */
 @Composable
 internal fun SettingsRowShell(
@@ -38,6 +51,9 @@ internal fun SettingsRowShell(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     titleColor: Color? = null,
+    icon: ImageVector? = null,
+    semanticRole: Role? = null,
+    semanticState: String? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val colors = ThorTheme.colors
@@ -46,23 +62,43 @@ internal fun SettingsRowShell(
     SettingsCard(
         focused = focused,
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = ROW_HEIGHT.dp),
+        modifier = modifier
+            .defaultMinSize(minHeight = ROW_HEIGHT.dp)
+            .semantics(mergeDescendants = true) {
+                if (onClick != null) role = semanticRole ?: Role.Button
+                semanticState?.let { stateDescription = it }
+            },
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = ROW_INSET.dp, vertical = 14.dp),
+                .padding(horizontal = ROW_INSET.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 3.dp, height = if (subtitle == null) 26.dp else 38.dp)
-                    .clip(ThorTheme.shapes.pill)
-                    .background(
-                        if (focused) colors.cursor else colors.outline.copy(alpha = 0.34f),
-                    ),
-            )
+            /*
+             * The tile lights with the cursor rather than staying inert.
+             *
+             * It is the largest coloured object in the row, so leaving it fixed
+             * while a ring appeared around the card meant the focused row and its
+             * neighbours differed only at their edges — which is exactly the
+             * difference that disappears across a room.
+             */
+            val tint = if (focused) colors.cursor else colors.onSurfaceVariant
+
+            if (icon != null) {
+                IconTile(icon = icon, tint = tint)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(width = 3.dp, height = if (subtitle == null) 26.dp else 38.dp)
+                        .clip(ThorTheme.shapes.pill)
+                        .background(
+                            if (focused) colors.cursor else colors.outline.copy(alpha = 0.34f),
+                        ),
+                )
+            }
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,

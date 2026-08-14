@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,8 @@ import com.thor.feature.settings.component.SettingsTextButton
 fun <T> ChoiceRow(
     title: String,
     subtitle: String? = null,
+    /** The glyph in the row's tile; null draws the plain marker instead. */
+    icon: ImageVector? = null,
     options: List<T>,
     selected: T,
     focused: Boolean = false,
@@ -69,6 +72,7 @@ fun <T> ChoiceRow(
 
     Box {
         SettingsRowShell(
+            icon = icon,
             title = title,
             subtitle = subtitle,
             focused = focused,
