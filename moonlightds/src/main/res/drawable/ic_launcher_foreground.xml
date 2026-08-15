@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Moonlight DS's mark: two screens with a moon on the upper one.
+
+  The same reasoning as Loki's icon, which this deliberately rhymes with — two
+  lit screens, one above the other, with a hinge between them, because that is
+  the one thing that identifies the machine. What is added is the single detail
+  that says which of the two apps this is: a crescent on the top screen, where
+  the stream itself appears.
+
+  The crescent is cut rather than drawn as an arc, so it holds its shape when the
+  icon is rendered at the 48dp a home screen actually uses. A stroked arc at that
+  size collapses into a smudge.
+
+  Everything sits inside a 44 x 56 box centred on the 108 grid, matching Loki's:
+  with a 7-unit corner the furthest painted point is about 33 from the centre,
+  which is the radius an adaptive icon is guaranteed to keep.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The body: a slate frame, light enough to separate from the plate. -->
+    <path
+        android:pathData="M36,26 L72,26 A7,7 0 0 1 79,33 L79,75 A7,7 0 0 1 72,82 L36,82 A7,7 0 0 1 29,75 L29,33 A7,7 0 0 1 36,26 Z"
+        android:fillColor="#FF39445C" />
+
+    <!-- The top screen, and the brighter of the two. -->
+    <path
+        android:pathData="M34,31 L74,31 L74,51 L34,51 Z"
+        android:fillColor="#FFDCEBFF" />
+
+    <!-- The hinge. -->
+    <path
+        android:pathData="M29,52.5 L79,52.5 L79,55.5 L29,55.5 Z"
+        android:fillColor="#FF232B3D" />
+
+    <!-- The bottom screen, dimmer: it carries the pad while the top carries the game. -->
+    <path
+        android:pathData="M34,57 L74,57 L74,77 L34,77 Z"
+        android:fillColor="#FF8FB6E8" />
+
+    <!--
+      The crescent, cut from the top screen.
+
+      Two circles: a filled disc in the screen's own dark, and a second disc in
+      the screen's colour offset to the right that eats most of it. What is left
+      is a crescent with a clean inner edge.
+    -->
+    <path
+        android:pathData="M54,32.5 m-8.5,0 a8.5,8.5 0 1,0 17,0 a8.5,8.5 0 1,0 -17,0"
+        android:fillColor="#FF16203A" />
+    <path
+        android:pathData="M58.5,31 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
+        android:fillColor="#FFDCEBFF" />
+</vector>

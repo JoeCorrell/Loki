@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.ui.component.ThorDropdownItem
-import com.thor.core.ui.component.ThorDropdownMenu
+import com.thor.core.ui.component.ThorDropdownAnchor
 import com.thor.feature.settings.component.SettingsTextButton
 
 /**
@@ -70,17 +70,22 @@ fun <T> ChoiceRow(
         onSelected(options[(current + direction).mod(options.size)])
     }
 
-    Box {
-        SettingsRowShell(
-            icon = icon,
-            title = title,
-            subtitle = subtitle,
-            focused = focused,
-            onClick = { expanded = true },
-            trailing = {
+    SettingsRowShell(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        focused = focused,
+        onClick = { expanded = true },
+        trailing = {
+            ThorDropdownAnchor(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.widthIn(max = VALUE_MAX_WIDTH.dp),
+                menuModifier = Modifier.heightIn(max = MENU_MAX_HEIGHT.dp),
+                matchAnchorWidth = false,
+                anchor = {
                 SettingsTextButton(
                     label = (valueLabel ?: label)(selected),
-                    modifier = Modifier.widthIn(max = VALUE_MAX_WIDTH.dp),
                     containerColor = if (focused) {
                         colors.cursor.copy(alpha = 0.14f)
                     } else {
@@ -89,27 +94,22 @@ fun <T> ChoiceRow(
                     contentColor = colors.cursor,
                     trailingIcon = Icons.Rounded.ExpandMore,
                 )
-            },
-        )
-
-        ThorDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(max = MENU_MAX_HEIGHT.dp),
-        ) {
-            options.forEach { option ->
-                ThorDropdownItem(
-                    label = label(option),
-                    description = optionDescription?.invoke(option),
-                    selected = option == selected,
-                    onClick = {
-                        expanded = false
-                        onSelected(option)
-                    },
-                )
+                },
+            ) {
+                options.forEach { option ->
+                    ThorDropdownItem(
+                        label = label(option),
+                        description = optionDescription?.invoke(option),
+                        selected = option == selected,
+                        onClick = {
+                            expanded = false
+                            onSelected(option)
+                        },
+                    )
+                }
             }
-        }
-    }
+        },
+    )
 }
 
 private const val MENU_MAX_HEIGHT = 340

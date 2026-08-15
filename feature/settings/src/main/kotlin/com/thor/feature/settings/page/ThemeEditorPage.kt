@@ -20,6 +20,7 @@ import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.CustomTheme
 import com.thor.core.model.MotionStyle
 import com.thor.core.model.SurfaceStyle
+import com.thor.core.model.ThemeHarmony
 import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThorSettings
 import com.thor.feature.settings.SettingsViewModel
@@ -210,18 +211,30 @@ private fun ThemeParameterRows(
 
     // ---- Colour -------------------------------------------------------------
 
+    ChoiceRow(
+        title = "Colour harmony",
+        icon = Icons.Rounded.Palette,
+        subtitle = "How accent families relate across categories and content",
+        options = ThemeHarmony.entries,
+        selected = theme.harmony,
+        label = ThemeHarmony::label,
+        focused = focusedRow == 1,
+        onSelected = { harmony -> viewModel.updateEditedTheme { it.copy(harmony = harmony) } },
+    )
+    RowDivider()
+
     ColorPickerRow(
-        title = "Colour",
-        subtitle = "Left and Right walk the spectrum, or tap it",
+        title = "Primary accent",
+        subtitle = "Brand colour, gradients, and high-emphasis moments",
         hue = theme.accentHue,
         chroma = theme.accentChroma,
-        focused = focusedRow == 1,
-        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(1, takes) },
+        focused = focusedRow == 2,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(2, takes) },
         onHueChange = { hue ->
             // The greys follow the accent, which is what every bundled theme does.
             // Left free to drift they read as a mistake rather than as a choice —
             // and it is one fewer question on a page whose point is having fewer.
-            viewModel.updateEditedTheme { it.copy(accentHue = hue, neutralHue = hue) }
+            viewModel.updateEditedTheme { it.copy(accentHue = hue) }
         },
     )
     RowDivider()
@@ -232,7 +245,7 @@ private fun ThemeParameterRows(
             "coloured cursor; high leads with the colour.",
         value = theme.accentChroma,
         range = CustomTheme.ACCENT_CHROMA,
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         stepOverride = CHROMA_STEP,
         valueLabel = ::strengthLabel,
         onValueChange = { chroma ->
@@ -252,6 +265,84 @@ private fun ThemeParameterRows(
     )
     RowDivider()
 
+    ColorPickerRow(
+        title = "Background",
+        subtitle = "The tint beneath wallpaper and every panel",
+        hue = theme.resolvedBackgroundHue,
+        chroma = theme.neutralChroma.coerceAtLeast(ROLE_SWATCH_CHROMA),
+        focused = focusedRow == 4,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(4, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(backgroundHue = hue) } },
+    )
+    RowDivider()
+
+    ColorPickerRow(
+        title = "Panels",
+        subtitle = "Cards, sheets, menus, and raised surfaces",
+        hue = theme.resolvedPanelHue,
+        chroma = theme.neutralChroma.coerceAtLeast(ROLE_SWATCH_CHROMA),
+        focused = focusedRow == 5,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(5, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(panelHue = hue) } },
+    )
+    RowDivider()
+
+    ColorPickerRow(
+        title = "Buttons",
+        subtitle = "Filled controls and primary actions",
+        hue = theme.resolvedControlHue,
+        chroma = theme.accentChroma,
+        focused = focusedRow == 6,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(6, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(controlHue = hue) } },
+    )
+    RowDivider()
+
+    ColorPickerRow(
+        title = "Selection",
+        subtitle = "Focused cards, active tabs, and controller highlights",
+        hue = theme.resolvedSelectionHue,
+        chroma = theme.accentChroma,
+        focused = focusedRow == 7,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(7, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(selectionHue = hue) } },
+    )
+    RowDivider()
+
+    ColorPickerRow(
+        title = "Content accent",
+        subtitle = "Artwork badges, progress, metadata, and media details",
+        hue = theme.resolvedContentHue,
+        chroma = theme.accentChroma,
+        focused = focusedRow == 8,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(8, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(contentHue = hue) } },
+    )
+    RowDivider()
+
+    ColorPickerRow(
+        title = "Text tone",
+        subtitle = "A subtle colour direction; contrast remains automatic",
+        hue = theme.resolvedTextHue,
+        chroma = TEXT_SWATCH_CHROMA,
+        focused = focusedRow == 9,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(9, takes) },
+        onHueChange = { hue -> viewModel.updateEditedTheme { it.copy(textHue = hue) } },
+    )
+    RowDivider()
+
+    SliderRow(
+        title = "Category colour",
+        subtitle = "Strength of platform, settings, and content category tints",
+        value = theme.tintChroma,
+        range = CustomTheme.TINT_CHROMA,
+        focused = focusedRow == 10,
+        stepOverride = CHROMA_STEP,
+        valueLabel = ::strengthLabel,
+        onValueChange = { value -> viewModel.updateEditedTheme { it.copy(tintChroma = value) } },
+    )
+    RowDivider()
+
     // ---- Material -----------------------------------------------------------
 
     ChoiceRow(
@@ -262,7 +353,7 @@ private fun ThemeParameterRows(
         selected = theme.surfaceStyle,
         label = SurfaceStyle::label,
         optionDescription = ::surfaceStyleDescription,
-        focused = focusedRow == 3,
+        focused = focusedRow == 11,
         // Opacity and blur arrive with the material rather than beside it: they
         // are what "glass" and "flat" mean, and setting them separately is how a
         // theme ends up labelled glass and drawn opaque.
@@ -275,7 +366,7 @@ private fun ThemeParameterRows(
         subtitle = "How round every panel, card and cell is",
         value = theme.cornerRadiusDp,
         range = CustomTheme.CORNER_RADIUS_DP,
-        focused = focusedRow == 4,
+        focused = focusedRow == 12,
         suffix = "dp",
         onValueChange = { radius ->
             viewModel.updateEditedTheme { it.copy(cornerRadiusDp = radius) }
@@ -288,7 +379,7 @@ private fun ThemeParameterRows(
             "flat field.",
         value = theme.backgroundDepth,
         range = CustomTheme.BACKGROUND_DEPTH,
-        focused = focusedRow == 5,
+        focused = focusedRow == 13,
         valueLabel = { percent(it, CustomTheme.BACKGROUND_DEPTH.endInclusive) },
         onValueChange = { depth ->
             viewModel.updateEditedTheme { it.copy(backgroundDepth = depth) }
@@ -305,7 +396,7 @@ private fun ThemeParameterRows(
         options = MotionStyle.entries,
         selected = theme.motion,
         label = MotionStyle::label,
-        focused = focusedRow == 6,
+        focused = focusedRow == 14,
         onSelected = { motion -> viewModel.updateEditedTheme { it.copy(motion = motion) } },
     )
     RowDivider()
@@ -317,7 +408,7 @@ private fun ThemeParameterRows(
         options = AnimatedWallpaper.entries,
         selected = theme.wallpaper,
         label = AnimatedWallpaper::label,
-        focused = focusedRow == 7,
+        focused = focusedRow == 15,
         onSelected = { paper -> viewModel.updateEditedTheme { it.copy(wallpaper = paper) } },
     )
     RowDivider()
@@ -328,7 +419,7 @@ private fun ThemeParameterRows(
         title = "Randomise",
         icon = Icons.Rounded.Shuffle,
         subtitle = "Rolls a new colour and material. Everything stays editable.",
-        focused = focusedRow == 8,
+        focused = focusedRow == 16,
         trailingLabel = "Roll",
         onClick = viewModel::randomiseEditedTheme,
     )
@@ -337,7 +428,7 @@ private fun ThemeParameterRows(
         title = "Export to a file",
         subtitle = "Save this theme so it can be shared and imported anywhere",
         suggestedName = "${theme.name.lowercase().replace(NON_FILENAME, "-")}.json",
-        focused = focusedRow == 9,
+        focused = focusedRow == 17,
         onChosen = { uri -> viewModel.exportTheme(theme.id, uri) },
     )
     RowDivider()
@@ -345,7 +436,7 @@ private fun ThemeParameterRows(
         title = "Duplicate",
         icon = Icons.Rounded.ContentCopy,
         subtitle = "Make a copy and edit that instead, leaving this one alone",
-        focused = focusedRow == 10,
+        focused = focusedRow == 18,
         trailingLabel = "Copy",
         onClick = { viewModel.duplicateTheme(theme.id) },
     )
@@ -355,7 +446,7 @@ private fun ThemeParameterRows(
         icon = Icons.Rounded.Delete,
         subtitle = "Cannot be undone. The launcher falls back to the built-in " +
             "theme underneath.",
-        focused = focusedRow == 11,
+        focused = focusedRow == 19,
         trailingLabel = "Delete",
         destructive = true,
         onClick = { viewModel.deleteTheme(theme.id) },
@@ -365,7 +456,7 @@ private fun ThemeParameterRows(
         title = "Done",
         icon = Icons.Rounded.Check,
         subtitle = "Back to the list. The theme stays applied.",
-        focused = focusedRow == 12,
+        focused = focusedRow == 20,
         trailingLabel = "Done",
         onClick = { viewModel.editTheme(null) },
     )
@@ -374,8 +465,8 @@ private fun ThemeParameterRows(
 /** Seed chooser, importer, then one row per saved theme. */
 private const val THEME_LIST_FIRST_ROW = 2
 
-/** Name, colour, strength, three material, two character, five actions. */
-internal const val THEME_EDITOR_OPEN_ROWS = 13
+/** Name, harmony, eight colour controls, three material, two character, five actions. */
+internal const val THEME_EDITOR_OPEN_ROWS = 21
 
 /**
  * How many rows the page has, which depends on whether a theme is open.
@@ -426,6 +517,12 @@ private val NON_FILENAME = Regex("[^a-z0-9]+")
  * [com.thor.feature.settings.component.row.SliderRow]'s override.
  */
 private const val CHROMA_STEP = 0.01f
+
+/** Quiet surface roles still need a visible spectrum in the editor. */
+private const val ROLE_SWATCH_CHROMA = 0.045f
+
+/** Text is rendered much quieter; this is only the picker's legible hue preview. */
+private const val TEXT_SWATCH_CHROMA = 0.06f
 
 /** Past here a theme is leading with its colour rather than carrying one. */
 private const val LOUD_CHROMA = 0.16f

@@ -60,7 +60,10 @@ fun ThemePreviewPanel(
     val elevated = Color(spec.surfaceElevatedArgb)
     val primary = Color(spec.primaryArgb)
     val accentEnd = Color(spec.accentEndArgb)
-    val cursor = Color(spec.cursorArgb)
+    val control = Color(spec.controlArgb)
+    val onControl = Color(spec.onControlArgb)
+    val selection = Color(spec.selectionArgb)
+    val contentAccent = Color(spec.contentAccentArgb)
     val onSurface = Color(spec.onSurfaceArgb)
     val onSurfaceVariant = Color(spec.onSurfaceVariantArgb)
 
@@ -107,14 +110,23 @@ fun ThemePreviewPanel(
                 Bar(width = 30, height = 3, color = onSurfaceVariant, shape = inner)
                 Bar(width = 36, height = 3, color = onSurfaceVariant, shape = inner)
                 Box(modifier = Modifier.weight(1f))
-                // The accent pair, which is what a progress bar or a badge uses.
+                // Content and control are separate roles, visible side by side.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(5.dp)
                         .clip(inner)
-                        .background(Brush.horizontalGradient(listOf(primary, accentEnd))),
+                        .background(contentAccent),
                 )
+                Box(
+                    modifier = Modifier
+                        .size(width = 34.dp, height = 12.dp)
+                        .clip(inner)
+                        .background(control),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Bar(width = 14, height = 2, color = onControl, shape = inner)
+                }
             }
 
             // Right: the grid, with the first cell holding the cursor.
@@ -136,7 +148,9 @@ fun ThemePreviewPanel(
                                     .miniatureSurface(spec, inner, elevated)
                                     .then(
                                         if (focused) {
-                                            Modifier.border(2.dp, cursor, inner)
+                                            Modifier
+                                                .background(selection.copy(alpha = 0.2f))
+                                                .border(2.dp, selection, inner)
                                         } else {
                                             Modifier
                                         },
@@ -157,7 +171,7 @@ fun ThemePreviewPanel(
                         modifier = Modifier
                             .size(width = 16.dp, height = 3.dp)
                             .clip(inner)
-                            .background(cursor),
+                            .background(selection),
                     )
                 }
             }

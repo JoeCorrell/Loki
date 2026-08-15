@@ -200,7 +200,7 @@ private fun PlatformProfileCard(
             val description = platform.description.takeIf(String::isNotBlank)
             if (description != null) {
                 PlatformDivider()
-                PlatformSectionTitle("DESCRIPTION")
+                PlatformSectionTitle("DESCRIPTION", accent)
                 /*
                  * Bounded by how many lines the card can afford, not by weight.
                  *
@@ -226,7 +226,7 @@ private fun PlatformProfileCard(
                 )
             }
 
-            PlatformSectionTitle("PLATFORM HIGHLIGHTS")
+            PlatformSectionTitle("PLATFORM HIGHLIGHTS", accent)
             PlatformHighlights(profile.highlights, accent)
 
             if (featuredGames.isNotEmpty()) {
@@ -236,6 +236,7 @@ private fun PlatformProfileCard(
                 Spacer(modifier = Modifier.weight(1f))
                 PlatformSectionTitle(
                     if (showingActivity) "CONTINUE PLAYING" else "LIBRARY HIGHLIGHTS",
+                    accent,
                 )
                 PlatformGameRows(
                     games = featuredGames,
@@ -347,7 +348,7 @@ private fun PlatformMasthead(
             Text(
                 text = profile.category,
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = .72f),
+                color = colors.onSurfaceVariant.copy(alpha = .9f),
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
@@ -403,15 +404,15 @@ private fun PlatformStats(
         PlatformStat(
             glyph = PlatformGlyph.GAME_LIBRARY,
             value = games.toString(),
-            label = "Games",
+            label = if (games == 1) "Game" else "Games",
             accent = accent,
             modifier = Modifier.weight(1f),
         )
         PlatformStatDivider()
         PlatformStat(
             glyph = PlatformGlyph.FAVOURITE,
-            value = favourites.takeIf { it > 0 }?.toString() ?: "None",
-            label = "Favourite",
+            value = favourites.toString(),
+            label = if (favourites == 1) "Favourite" else "Favourites",
             accent = accent,
             modifier = Modifier.weight(1f),
         )
@@ -696,8 +697,7 @@ private fun PlatformControllerHint(button: String, label: String, accent: Color)
 }
 
 @Composable
-private fun PlatformSectionTitle(text: String) {
-    val colors = ThorTheme.colors
+private fun PlatformSectionTitle(text: String, accent: Color) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -706,7 +706,7 @@ private fun PlatformSectionTitle(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = .76f),
+            color = accent.copy(alpha = .9f),
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -714,7 +714,7 @@ private fun PlatformSectionTitle(text: String) {
             modifier = Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(colors.outline.copy(alpha = .15f)),
+                .background(platformAccentBrush(accent, alpha = .24f)),
         )
     }
 }

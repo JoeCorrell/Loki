@@ -31,6 +31,14 @@ data class ThorColors(
      * badges. A single flat accent is the main reason a palette reads as cheap.
      */
     val accentEnd: Color,
+    /** Buttons and actionable controls, independent from selection. */
+    val control: Color,
+    val onControl: Color,
+    /** Focus rings, selected cards and active navigation destinations. */
+    val selection: Color,
+    val onSelection: Color,
+    /** Artwork badges, progress and content-specific decoration. */
+    val contentAccent: Color,
     val background: Color,
     val surface: Color,
     val surfaceElevated: Color,
@@ -91,6 +99,11 @@ fun buildThorColors(
     primary = Color(spec.primaryArgb),
     secondary = Color(spec.secondaryArgb),
     accentEnd = Color(spec.accentEndArgb),
+    control = Color(spec.controlArgb),
+    onControl = Color(spec.onControlArgb),
+    selection = Color(spec.selectionArgb),
+    onSelection = Color(spec.onSelectionArgb),
+    contentAccent = Color(spec.contentAccentArgb),
     background = Color(spec.backgroundArgb),
     surface = Color(spec.surfaceArgb),
     surfaceElevated = Color(spec.surfaceElevatedArgb),
@@ -149,6 +162,11 @@ private fun ThorColors.withColorBlindCorrection(mode: ColorBlindMode): ThorColor
         primary = adjust(primary),
         secondary = adjust(secondary),
         accentEnd = adjust(accentEnd),
+        control = adjust(control),
+        onControl = contrastingContentColor(adjust(control)),
+        selection = adjust(selection),
+        onSelection = contrastingContentColor(adjust(selection)),
+        contentAccent = adjust(contentAccent),
         cursor = adjust(cursor),
         glow = adjust(glow),
         error = adjust(error),
@@ -165,13 +183,13 @@ fun Color.lighten(fraction: Float): Color = blend(Color.White, fraction)
 
 /** Projects the launcher palette onto a Material 3 scheme. */
 fun ThorColors.toMaterialScheme(): ColorScheme {
-    val onPrimary = contrastingContentColor(primary)
+    val onPrimary = onControl
     return if (isDark) {
         darkColorScheme(
-            primary = primary,
+            primary = control,
             onPrimary = onPrimary,
-            secondary = secondary,
-            onSecondary = contrastingContentColor(secondary),
+            secondary = contentAccent,
+            onSecondary = contrastingContentColor(contentAccent),
             background = background,
             onBackground = onBackground,
             surface = surface,
@@ -186,10 +204,10 @@ fun ThorColors.toMaterialScheme(): ColorScheme {
         )
     } else {
         lightColorScheme(
-            primary = primary,
+            primary = control,
             onPrimary = onPrimary,
-            secondary = secondary,
-            onSecondary = contrastingContentColor(secondary),
+            secondary = contentAccent,
+            onSecondary = contrastingContentColor(contentAccent),
             background = background,
             onBackground = onBackground,
             surface = surface,

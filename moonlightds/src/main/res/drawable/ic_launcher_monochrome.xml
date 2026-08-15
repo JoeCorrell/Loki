@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The themed-icon layer, which Android tints itself.
+
+  One flat silhouette and no shading, because the system paints every path a
+  single colour: anything drawn as a lighter shade here would simply disappear
+  into its neighbour. What survives is the outline of the device, the hinge as a
+  gap, and the crescent as a hole in the top screen.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M36,26 L72,26 A7,7 0 0 1 79,33 L79,75 A7,7 0 0 1 72,82 L36,82 A7,7 0 0 1 29,75 L29,33 A7,7 0 0 1 36,26 Z M34,31 L34,50 L74,50 L74,31 Z M34,58 L34,77 L74,77 L74,58 Z"
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd" />
+
+    <path
+        android:pathData="M54,32.5 m-8.5,0 a8.5,8.5 0 1,0 17,0 a8.5,8.5 0 1,0 -17,0 M58.5,31 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd" />
+</vector>

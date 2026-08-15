@@ -10,7 +10,7 @@
       why does a launcher want this, and what will it do with it.
     -->
     <string name="mouse_service_summary">Controller pointer for apps and games</string>
-    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nIt is also what lets Loki\'s on-screen keyboard type into other apps. To do that it can read the text field you have selected, which means this permission allows reading window contents. Loki uses it only to find the field you tapped and to fill it in, and stores nothing.</string>
+    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nIt is also what lets Loki\'s on-screen keyboard type into other apps. To do that it can read the text field you have selected, which means this permission allows reading window contents. Loki uses it only to find the field you tapped and to fill it in, and stores nothing.\n\nDisplay capture is used only when you press Screenshot or explicitly start a dual-screen recording. Recording stays visible through Android\'s capture indicator and Loki\'s notification; secondary-screen frames are written only into that video.</string>
 
     <!--
       Shown over the black surface while a stream is being set up.

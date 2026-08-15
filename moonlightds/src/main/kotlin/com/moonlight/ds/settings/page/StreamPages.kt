@@ -1,0 +1,536 @@
+package com.moonlight.ds.settings.page
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.HdrOn
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import com.thor.core.model.StreamAudio
+import com.thor.core.model.StreamCodec
+import com.thor.core.model.StreamNetwork
+import com.thor.core.model.ThorSettings
+import com.moonlight.ds.settings.component.row.ChoiceRow
+import com.moonlight.ds.settings.component.row.InfoRow
+import com.moonlight.ds.settings.component.row.IntSliderRow
+import com.moonlight.ds.settings.component.RowDivider
+import com.moonlight.ds.settings.component.row.SliderRow
+import com.moonlight.ds.settings.component.row.SwitchRow
+import com.moonlight.ds.settings.component.row.TextFieldRow
+import com.moonlight.ds.settings.SettingsViewModel
+
+/** The focused slices of stream quality settings shown in the side rail. */
+internal enum class StreamQualitySection(internal val sourceRows: List<Int>) {
+    VIDEO((0..4).toList()),
+    AUDIO(listOf(5, 7)),
+    NETWORK(listOf(6, 8)),
+}
+
+/** The focused slices of stream input settings shown in the side rail. */
+internal enum class StreamControlsSection(internal val sourceRows: List<Int>) {
+    SECOND_SCREEN((0..3).toList()),
+    POINTER((4..8).toList()),
+    SESSION(listOf(9)),
+}
+
+internal const val STREAM_VIDEO_ROWS = 5
+internal const val STREAM_AUDIO_ROWS = 2
+internal const val STREAM_NETWORK_ROWS = 2
+internal const val STREAM_SECOND_SCREEN_ROWS = 4
+internal const val STREAM_POINTER_ROWS = 5
+internal const val STREAM_SESSION_ROWS = 1
+
+/** How many rows [StreamHostsPage] draws. */
+internal const val STREAM_HOSTS_ROWS = 2
+
+/**
+ * A resolution to ask the host for.
+ *
+ * A short list rather than free entry: these are what encoders are built around,
+ * and a host asked for something unusual either refuses or quietly sends
+ * something else. Below the panel's own resolution is a legitimate choice — it
+ * is the cheapest way to make a stream over a poor link watchable.
+ */
+private data class Resolution(val width: Int, val height: Int, val label: String)
+
+private val RESOLUTIONS = listOf(
+    Resolution(1280, 720, "720p — kindest to a weak connection"),
+    Resolution(1920, 1080, "1080p — matches this screen"),
+    Resolution(2560, 1440, "1440p — sharper than the panel can show"),
+    Resolution(3840, 2160, "4K — costs bandwidth this screen cannot use"),
+)
+
+private val FRAME_RATES = listOf(30, 60, 120)
+
+/**
+ * Frame rates offered for the second display.
+ *
+ * Tops out well below the game's. What lands on that panel is a desktop, and the
+ * encoder time and bandwidth a higher rate costs come straight out of the screen
+ * the user is actually playing on.
+ */
+private val SECOND_DISPLAY_FRAME_RATES = listOf(15, 24, 30, 60)
+
+/** Draws a source row when it belongs to the selected rail section. */
+@Composable
+private fun SectionRow(
+    sourceRows: List<Int>,
+    sourceRow: Int,
+    focusedRow: Int,
+    content: @Composable (focused: Boolean) -> Unit,
+) {
+    val localRow = sourceRows.indexOf(sourceRow)
+    if (localRow >= 0) content(localRow == focusedRow)
+}
+
+/**
+ * What THOR asks a PC to send.
+ *
+ * Requests rather than commands, and the page says so: the host decides what it
+ * can actually encode, and one that cannot manage the asked-for mode sends
+ * something else rather than refusing. Presenting these as guarantees would make
+ * a perfectly working stream look broken whenever a PC quietly did otherwise.
+ */
+@Composable
+internal fun StreamQualityPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    section: StreamQualitySection,
+) {
+    val quality = settings.stream.quality
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionRow(section.sourceRows, 0, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Resolution",
+            icon = Icons.Rounded.HighQuality,
+            subtitle = "What to ask the PC to encode. Higher than this panel costs " +
+                "bandwidth and decoding for detail the screen cannot show.",
+            options = RESOLUTIONS,
+            selected = RESOLUTIONS.firstOrNull {
+                it.width == quality.width && it.height == quality.height
+            } ?: RESOLUTIONS[1],
+            focused = focused,
+            label = { it.label },
+            onSelected = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(width = value.width, height = value.height))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 1, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Frame rate",
+            icon = Icons.Rounded.Speed,
+            subtitle = "Higher is smoother and more responsive, and costs bandwidth in " +
+                "proportion. A PC that cannot hold it sends fewer frames rather " +
+                "than failing.",
+            options = FRAME_RATES,
+            selected = FRAME_RATES.firstOrNull { it == quality.fps } ?: 60,
+            focused = focused,
+            label = { "$it fps" },
+            onSelected = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(fps = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 2, focusedRow) { focused ->
+            IntSliderRow(
+            title = "Bandwidth",
+            icon = Icons.Rounded.NetworkCheck,
+            /*
+             * Named as the setting that actually decides how it looks.
+             *
+             * Resolution gets the attention, but bitrate is what separates a
+             * stream that looks like the game from one that smears whenever
+             * anything moves. Worth saying, because the instinct is to raise the
+             * resolution when a picture looks poor and that usually makes it
+             * worse.
+             */
+            subtitle = "The setting that decides how it looks in motion. 20 Mbps suits " +
+                "1080p60 on a home network; lower it for a link over the internet " +
+                "or a VPN.",
+            value = quality.bitrateKbps / 1000,
+            range = 3..100,
+            focused = focused,
+            suffix = " Mbps",
+            onValueChange = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(bitrateKbps = value * 1000))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 3, focusedRow) { focused ->
+            SwitchRow(
+            title = "Ask for HDR",
+            icon = Icons.Rounded.HdrOn,
+            subtitle = "Only if the PC and the game both support it. Loki does not yet " +
+                "apply the colour data, so this is off — and a stream that claims " +
+                "HDR without honouring it looks washed out.",
+            checked = quality.enableHdr,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(enableHdr = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 4, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Video codec",
+            icon = Icons.Rounded.Memory,
+            subtitle = "Newer codecs carry the same picture in less bandwidth but cost " +
+                "more to decode. A codec this device cannot decode in hardware is " +
+                "quietly not offered.",
+            options = StreamCodec.entries,
+            selected = quality.codec,
+            focused = focused,
+            label = { it.label },
+            optionDescription = { it.detail },
+            onSelected = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(codec = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 5, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Audio",
+            icon = Icons.AutoMirrored.Rounded.VolumeUp,
+            subtitle = "Surround costs bandwidth to encode channels this handheld then " +
+                "mixes back down. Worth it only through headphones that do something " +
+                "with them.",
+            options = StreamAudio.entries,
+            selected = quality.audio,
+            focused = focused,
+            label = { it.label },
+            onSelected = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(audio = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 6, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Connection",
+            icon = Icons.Rounded.Wifi,
+            subtitle = "Decides packet size. A packet too large for the path is split, " +
+                "which costs far more than a slightly small one — VPNs in particular " +
+                "reduce what fits.",
+            options = StreamNetwork.entries,
+            selected = quality.network,
+            focused = focused,
+            label = { it.label },
+            optionDescription = { it.detail },
+            onSelected = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(network = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 7, focusedRow) { focused ->
+            SwitchRow(
+            title = "Keep playing sound on the PC",
+            icon = Icons.Rounded.Speaker,
+            subtitle = "Off, because the usual reason to stream is that you are not at " +
+                "the PC, and sound from an empty room is a surprise rather than a " +
+                "feature.",
+            checked = quality.playAudioOnHost,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(playAudioOnHost = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 8, focusedRow) { focused ->
+            SwitchRow(
+            title = "Let the PC change game settings",
+            icon = Icons.Rounded.Tune,
+            subtitle = "Sunshine and GeForce Experience call this “optimal playable " +
+                "settings”. Off: it rewrites options you chose, on your own machine, " +
+                "and only NVIDIA's host implemented it properly.",
+            checked = quality.optimizeGameSettings,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(optimizeGameSettings = on))
+                }
+            },
+            )
+            RowDivider()
+        }
+    }
+}
+
+/**
+ * How the handheld drives the PC.
+ *
+ * Its own page because these are adjusted for a different reason than picture
+ * quality: one is tuned once against the network, the other is fiddled with
+ * until the controls feel right.
+ */
+@Composable
+internal fun StreamControlsPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    section: StreamControlsSection,
+) {
+    val quality = settings.stream.quality
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionRow(section.sourceRows, 0, focusedRow) { focused ->
+            SwitchRow(
+            title = "Bottom screen as a second display",
+            icon = Icons.Rounded.Monitor,
+            subtitle = "Shows a second PC display on the bottom panel instead of the " +
+                "trackpad. Needs a host that serves two video streams; a standard " +
+                "Sunshine declines and the trackpad stays.",
+            checked = quality.secondDisplay,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(secondDisplay = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 1, focusedRow) { focused ->
+            ChoiceRow(
+            title = "Second display frame rate",
+            icon = Icons.Rounded.Speed,
+            subtitle = "Lower than the game's on purpose. A desktop does not need the " +
+                "frames a game does, and every one spent here is bandwidth taken from " +
+                "the screen being played on.",
+            options = SECOND_DISPLAY_FRAME_RATES,
+            selected = SECOND_DISPLAY_FRAME_RATES.firstOrNull { it == quality.secondDisplayFps }
+                ?: 30,
+            focused = focused,
+            label = { "$it fps" },
+            onSelected = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(secondDisplayFps = value))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 2, focusedRow) { focused ->
+            IntSliderRow(
+            title = "Second display bandwidth",
+            icon = Icons.Rounded.NetworkCheck,
+            subtitle = "Budgeted separately from the game's, not split out of it. A " +
+                "mostly static desktop needs little, and taking it proportionally " +
+                "would starve the screen that is actually moving.",
+            value = quality.secondDisplayBitrateKbps / 1000,
+            range = 1..40,
+            focused = focused,
+            suffix = " Mbps",
+            onValueChange = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(secondDisplayBitrateKbps = value * 1000))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 3, focusedRow) { focused ->
+            SwitchRow(
+            title = "Trackpad and keyboard on the bottom screen",
+            icon = Icons.Rounded.Keyboard,
+            subtitle = "The reason the panel exists: Android's own keyboard cannot " +
+                "appear over a stream, or on the second screen at all, so without " +
+                "this there is no way to type on the PC. Ignored while the panel is " +
+                "showing a second display — it cannot be both.",
+            checked = quality.bottomPanel,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(bottomPanel = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 4, focusedRow) { focused ->
+            SliderRow(
+            title = "Pointer speed",
+            icon = Icons.Rounded.Speed,
+            subtitle = "How far the pointer travels for a given swipe on the trackpad.",
+            value = quality.trackpadSpeed,
+            range = 0.5f..4f,
+            steps = 13,
+            focused = focused,
+            valueLabel = { "%.1f×".format(it) },
+            onValueChange = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(trackpadSpeed = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 5, focusedRow) { focused ->
+            SwitchRow(
+            title = "Tap to click",
+            icon = Icons.Rounded.TouchApp,
+            subtitle = "A tap on the trackpad is a left click; two fingers is a right " +
+                "click.",
+            checked = quality.tapToClick,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(tapToClick = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 6, focusedRow) { focused ->
+            SwitchRow(
+            title = "Natural scrolling",
+            icon = Icons.Rounded.SwapVert,
+            subtitle = "Content follows your fingers, as it does everywhere else on a " +
+                "touchscreen. Off scrolls the way a mouse wheel does.",
+            checked = quality.naturalScroll,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(naturalScroll = on)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 7, focusedRow) { focused ->
+            SwitchRow(
+            title = "Touch the picture to point",
+            icon = Icons.Rounded.TouchApp,
+            subtitle = "Puts the PC's cursor exactly where you touch the video. On by " +
+                "default for direct desktop control; turn it off if a hand resting on " +
+                "the screen disrupts a game.",
+            checked = quality.touchVideoAsPointer,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(touchVideoAsPointer = on))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 8, focusedRow) { focused ->
+            SliderRow(
+            title = "Stick dead zone",
+            subtitle = "How far a stick must move before it counts. Too small and a pad " +
+                "at rest walks on its own; too large and fine aiming is lost.",
+            value = quality.stickDeadZone,
+            range = 0f..0.4f,
+            steps = 7,
+            focused = focused,
+            valueLabel = { "%.0f%%".format(it * 100) },
+            onValueChange = { value ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(stickDeadZone = value)) }
+            },
+            )
+            RowDivider()
+        }
+
+        SectionRow(section.sourceRows, 9, focusedRow) { focused ->
+            SwitchRow(
+            title = "Start opens these settings",
+            icon = Icons.Rounded.Settings,
+            subtitle = "Opens the trackpad panel's settings on the bottom screen. The PC " +
+                "then never sees Start, because a key press goes to one window — turn " +
+                "this off if a game needs it.",
+            checked = quality.startOpensSettings,
+            focused = focused,
+            onCheckedChange = { on ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(startOpensSettings = on))
+                }
+            },
+            )
+            RowDivider()
+        }
+
+        if (section == StreamControlsSection.SESSION) {
+            InfoRow(
+                title = "Leaving a stream",
+                icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                value = "Press Back to leave. The host session stays available so you " +
+                    "can reconnect; stop it from the PC list when you are finished.",
+            )
+            RowDivider()
+        }
+    }
+}
+
+/** How PCs are found, and what this device calls itself to them. */
+@Composable
+internal fun StreamHostsPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+) {
+    val stream = settings.stream
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SwitchRow(
+            title = "Find PCs automatically",
+            icon = Icons.Rounded.Radar,
+            subtitle = "Sunshine announces itself on the network, so most PCs need no " +
+                "setting up. Announcements do not cross a VPN or a different " +
+                "subnet — over Tailscale, add the PC by address instead.",
+            checked = stream.discoverAutomatically,
+            focused = focusedRow == 0,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(discoverAutomatically = on) }
+            },
+        )
+        RowDivider()
+
+        TextFieldRow(
+            title = "This device's name",
+            icon = Icons.Rounded.Badge,
+            subtitle = "What Loki is listed as in Sunshine's client list on the PC. " +
+                "Changing it does not undo a pairing.",
+            value = stream.clientName,
+            focused = focusedRow == 1,
+            onValueChange = { value ->
+                viewModel.updateStream { it.copy(clientName = value) }
+            },
+        )
+        RowDivider()
+    }
+}

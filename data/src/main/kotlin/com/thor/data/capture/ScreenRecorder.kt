@@ -12,12 +12,20 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import com.thor.core.common.capture.ScreenshotBridge
 import com.thor.core.common.log.ThorLog
 import com.thor.core.model.RecordingAudio
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,21 +34,18 @@ sealed interface RecordingState {
     data object Idle : RecordingState
 
     /**
-     * Recording, onto [displayId].
+     * Recording either onto [displayId] or directly from the physical displays.
      *
-     * The id is the point: it is a display the launcher created for itself, and
-     * whatever is rendered onto it is what lands in the file.
-     *
-     * @param mirrored a live projection of the real screen, when the user asked to
-     *   record something the launcher did not draw. It is *not* the video — the
-     *   video is still the console mock-up on [displayId] — it is the picture that
-     *   goes into the mock-up's top screen, so a game is recorded inside the device
-     *   with the launcher's own panel underneath it. Null for a recording of the
-     *   launcher alone, where the top screen shows the launcher's own top panel.
+     * Launcher-only recordings expose their private display so Compose can draw
+     * onto it. Device recordings are composed inside the foreground service and
+     * set [capturesDevice], so covering or destroying Loki's window cannot stop
+     * frames from reaching the encoder.
      */
     data class Active(
-        val displayId: Int,
-        val mirrored: MediaProjection? = null,
+        /** Private Compose display for launcher-only recordings; otherwise null. */
+        val displayId: Int?,
+        /** True when the foreground service is capturing physical displays. */
+        val capturesDevice: Boolean = false,
     ) : RecordingState
 
     /** The last attempt failed; carried so the UI can say what happened. */
@@ -48,12 +53,11 @@ sealed interface RecordingState {
 }
 
 /**
- * Records the launcher onto a private display of its own.
+ * Records either Loki's UI or the physical device displays.
  *
- * **Why not screen capture.** `MediaProjection` — what every screen recorder uses —
- * captures the *default* display and only that one. There is no public API to point
- * it at a secondary panel, so on a two-screen handheld it can never see the bottom
- * screen. Which makes it useless for the one thing worth recording here.
+ * Launcher-only capture draws Loki onto a private display backed by the encoder.
+ * Device capture uses MediaProjection for the default panel and accessibility
+ * frames for the secondary panel, composed on a GL thread owned by the service.
  *
  * So the launcher does not capture a screen at all: it draws a third copy of itself.
  * A private `VirtualDisplay` is created with the encoder's input surface as its
@@ -62,13 +66,13 @@ sealed interface RecordingState {
  * the encoder, never through a bitmap, and no permission is involved because the app
  * owns both the display and its contents.
  *
- * The consequence is worth being clear about: this records **the launcher**, not the
- * screen. A game running on a panel is another app's window on a display this
- * recorder cannot see, so it does not appear.
+ * Both routes publish through MediaStore only after the encoder stops successfully;
+ * failed or empty recordings are deleted rather than left as invisible pending files.
  */
 @Singleton
 class ScreenRecorder @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val screenshots: ScreenshotBridge,
 ) {
 
     private val displayManager: DisplayManager? =
@@ -79,8 +83,13 @@ class ScreenRecorder @Inject constructor(
 
     private var recorder: MediaRecorder? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private var projectionCompositor: RecordingProjectionCompositor? = null
     private var pendingUri: Uri? = null
     private var activeProjection: MediaProjection? = null
+    private var projectionCallback: MediaProjection.Callback? = null
+    private var bottomCaptureJob: Job? = null
+    private val captureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var stopping = false
 
     val isRecording: Boolean get() = _state.value is RecordingState.Active
 
@@ -155,36 +164,31 @@ class ScreenRecorder @Inject constructor(
     }
 
     /**
-     * Records with the real screen in the console's top display.
+     * Records apps on both physical panels in one stacked frame.
      *
-     * The same video as [start] — the mock-up, both screens, drawn onto the
-     * launcher's own private display — with one difference: the picture in the lid's
-     * screen is a live mirror of the actual display rather than the launcher's top
-     * panel. So a game is recorded *inside the device*, with the launcher's own
-     * bottom panel beneath it, instead of as a bare rectangle.
-     *
-     * The projection is handed back on the state rather than pointed at the encoder.
-     * Aiming it straight at the encoder is the obvious thing and produces exactly
-     * what this exists to avoid: one screen, no device, none of the launcher. What
-     * the recording actually wants is a *texture* it can draw inside the mock-up,
-     * and the surface for that belongs to the composition, not to this class.
-     *
-     * It still sees **one screen** — `MediaProjection` mirrors the default display
-     * and has no public route to a secondary panel — but that is the lid, and the
-     * base is drawn by the launcher as it always was.
-     *
-     * And it needs **consent every session**, granted by the system's own dialog.
-     * That is not something an app can remember on the user's behalf.
-     *
-     * @param projection a projection already obtained from a granted consent result
+     * MediaProjection supplies the primary panel at video frame rate. Android has
+     * no public projection stream for a secondary physical display, so Loki's
+     * accessibility service supplies that panel at the platform's permitted
+     * screenshot cadence. The service-owned compositor continues after every Loki
+     * window is covered or destroyed. Consent is still required for every session.
      */
     fun startProjection(
         projection: MediaProjection,
-        width: Int,
-        height: Int,
-        densityDpi: Int,
+        requestedLayout: ScreenCaptureLayout,
     ): RecordingState {
         if (isRecording) return _state.value
+
+        if (requestedLayout.bottom != null && !screenshots.available.value) {
+            projection.stop()
+            return fail("Turn on Loki's accessibility service to record both screens")
+        }
+
+        val layout = requestedLayout.scaledForEncoder()
+        val uri = createOutputEntry()
+        if (uri == null) {
+            projection.stop()
+            return fail("Could not create the video file")
+        }
 
         /*
          * The projection can end without us: the user revokes it from the system
@@ -198,16 +202,57 @@ class ScreenRecorder @Inject constructor(
         }
         projection.registerCallback(callback, null)
         activeProjection = projection
+        projectionCallback = callback
 
-        return when (val state = start(width, height, densityDpi)) {
-            is RecordingState.Active -> state.copy(mirrored = projection)
-                .also { _state.value = it }
+        return runCatching {
+            val newRecorder = prepareRecorder(uri, layout.outputWidth, layout.outputHeight)
+            recorder = newRecorder
+            pendingUri = uri
 
-            else -> {
-                projection.unregisterCallback(callback)
-                projection.stop()
-                activeProjection = null
-                state
+            val compositor = RecordingProjectionCompositor(
+                projection = projection,
+                encoderSurface = newRecorder.surface,
+                layout = layout,
+                onFailure = {
+                    captureScope.launch { if (isRecording) stop() }
+                },
+            )
+            projectionCompositor = compositor
+            compositor.prepare()
+            newRecorder.start()
+            compositor.start()
+
+            RecordingState.Active(displayId = null, capturesDevice = true).also { active ->
+                _state.value = active
+                startBottomCapture(layout.bottom, compositor)
+            }
+        }.getOrElse { error ->
+            ThorLog.e(TAG, "Could not start screen recording", error)
+            releaseEverything()
+            discard(uri)
+            fail(error.message ?: "Screen recording could not be started")
+        }
+    }
+
+    private fun startBottomCapture(
+        bottom: CaptureDisplay?,
+        compositor: RecordingProjectionCompositor,
+    ) {
+        if (bottom == null) return
+
+        bottomCaptureJob = captureScope.launch {
+            while (isActive && isRecording) {
+                if (!screenshots.available.value) {
+                    ThorLog.w(TAG, "Secondary-screen capture became unavailable")
+                    stop()
+                    break
+                }
+
+                val bitmap = runCatching { screenshots.captureBitmap(bottom.displayId) }
+                    .onFailure { ThorLog.w(TAG, "Could not capture the bottom screen", it) }
+                    .getOrNull()
+                compositor.submitBottom(bitmap)
+                delay(SECONDARY_FRAME_INTERVAL_MS)
             }
         }
     }
@@ -271,13 +316,13 @@ class ScreenRecorder @Inject constructor(
                 }
             }
 
+            recorder = newRecorder
+            pendingUri = uri
             val newDisplay = display(newRecorder.surface)
 
             newRecorder.start()
 
-            recorder = newRecorder
             virtualDisplay = newDisplay
-            pendingUri = uri
 
             RecordingState.Active(newDisplay.display.displayId).also { _state.value = it }
         }.getOrElse { error ->
@@ -288,31 +333,66 @@ class ScreenRecorder @Inject constructor(
         }
     }
 
+    /** Configures the common MediaRecorder state machine for a projection. */
+    private fun prepareRecorder(uri: Uri, videoWidth: Int, videoHeight: Int): MediaRecorder {
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "rw")
+            ?: error("No file descriptor for $uri")
+        val withAudio = audio == RecordingAudio.MICROPHONE && hasMicrophonePermission()
+
+        return descriptor.use { file ->
+            buildRecorder().apply {
+                if (withAudio) setAudioSource(MediaRecorder.AudioSource.MIC)
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                if (withAudio) {
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioSamplingRate(AUDIO_SAMPLE_RATE)
+                    setAudioEncodingBitRate(AUDIO_BIT_RATE)
+                    setAudioChannels(AUDIO_CHANNELS)
+                }
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setVideoSize(videoWidth, videoHeight)
+                setVideoFrameRate(FRAME_RATE)
+                setVideoEncodingBitRate(bitRateFor(videoWidth, videoHeight))
+                setOutputFile(file.fileDescriptor)
+                prepare()
+            }
+        }
+    }
+
     /**
      * Stops and publishes the file.
      *
      * @return the file's display name when something was written, or null
      */
+    @Synchronized
     fun stop(): String? {
-        val uri = pendingUri
-        val active = recorder
+        if (stopping) return null
+        stopping = true
 
-        /*
-         * `stop()` throws when the encoder was handed no frames at all, which is not
-         * an error the user should see as a crash — it means the recording was ended
-         * within a frame or two of starting. The file is discarded either way.
-         */
-        val wrote = runCatching { active?.stop() }.isSuccess
-        releaseEverything()
+        return try {
+            val uri = pendingUri
+            val active = recorder
 
-        _state.value = RecordingState.Idle
+            /*
+             * `stop()` throws when the encoder was handed no frames at all, which
+             * means recording ended within a frame or two. Discard that empty file.
+             */
+            projectionCompositor?.pause()
+            val wrote = active != null && runCatching { active.stop() }.isSuccess
+            releaseEverything()
 
-        if (uri == null) return null
-        if (!wrote) {
-            discard(uri)
-            return null
+            _state.value = RecordingState.Idle
+
+            if (uri == null) return null
+            if (!wrote) {
+                discard(uri)
+                return null
+            }
+            publish(uri)
+        } finally {
+            stopping = false
         }
-        return publish(uri)
     }
 
     /** API 31 deprecated the parameterless constructor; both are still needed. */
@@ -356,15 +436,25 @@ class ScreenRecorder @Inject constructor(
     }
 
     private fun releaseEverything() {
-        // The projection first: it owns the display about to be dropped, and one
-        // left running is a screen the system still believes is being captured.
-        runCatching { activeProjection?.stop() }
-        activeProjection = null
+        bottomCaptureJob?.cancel()
+        bottomCaptureJob = null
+        // Stop feeding frames before resetting the encoder surface they target.
+        runCatching { projectionCompositor?.release() }
+        projectionCompositor = null
         runCatching { virtualDisplay?.release() }
+        virtualDisplay = null
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
-        virtualDisplay = null
         recorder = null
+
+        val projection = activeProjection
+        val callback = projectionCallback
+        activeProjection = null
+        projectionCallback = null
+        if (projection != null && callback != null) {
+            runCatching { projection.unregisterCallback(callback) }
+        }
+        runCatching { projection?.stop() }
         pendingUri = null
     }
 
@@ -384,6 +474,8 @@ class ScreenRecorder @Inject constructor(
         const val DISPLAY_NAME = "Loki capture"
         const val OUTPUT_DIRECTORY = "Movies/Loki"
         const val FRAME_RATE = 30
+        // Android rate-limits AccessibilityService screenshots to one per 333ms.
+        const val SECONDARY_FRAME_INTERVAL_MS = 350L
 
         /** Enough for speech and game audio off a handheld's speakers. */
         const val AUDIO_SAMPLE_RATE = 44_100

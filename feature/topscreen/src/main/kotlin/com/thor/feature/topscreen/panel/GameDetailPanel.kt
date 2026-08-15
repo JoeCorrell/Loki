@@ -145,7 +145,7 @@ private fun GameProfileCard(
         ) {
             GameMasthead(game = game, platform = platform, accent = accent)
             GameDivider()
-            GameSectionTitle("YOUR ACTIVITY")
+            GameSectionTitle("YOUR ACTIVITY", accent)
             GameActivityStats(game = game, accent = accent)
 
             /*
@@ -174,7 +174,7 @@ private fun GameProfileCard(
             val description = game.metadata.description?.takeIf(String::isNotBlank)
             if (description != null) {
                 GameDivider()
-                GameSectionTitle("DESCRIPTION")
+                GameSectionTitle("DESCRIPTION", accent)
                 GameDescription(
                     text = description,
                     color = colors.onSurfaceVariant,
@@ -195,12 +195,15 @@ private fun GameProfileCard(
              */
             game.metadata.achievements?.takeIf { it.total > 0 }?.let { summary ->
                 GameDivider()
-                GameSectionTitle(if (summary.isHardcore) "ACHIEVEMENTS · HARDCORE" else "ACHIEVEMENTS")
+                GameSectionTitle(
+                    if (summary.isHardcore) "ACHIEVEMENTS · HARDCORE" else "ACHIEVEMENTS",
+                    accent,
+                )
                 GameAchievements(summary = summary, accent = accent)
             }
 
             if (selectedMedia != null) {
-                GameSectionTitle("MEDIA")
+                GameSectionTitle("MEDIA", accent)
                 val mediaHeight = (contentWidth / GAME_MEDIA_ASPECT)
                     .coerceAtMost(cardHeight * GAME_MEDIA_MAX_FRACTION)
                 /*
@@ -655,7 +658,7 @@ private fun GameFact(fact: GameFactModel, accent: Color, modifier: Modifier = Mo
             Text(
                 text = fact.label.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = .72f),
+                color = colors.onSurfaceVariant.copy(alpha = .88f),
                 maxLines = 1,
             )
             Text(
@@ -885,8 +888,7 @@ private fun GameControllerHint(button: String, label: String, accent: Color) {
 }
 
 @Composable
-private fun GameSectionTitle(text: String) {
-    val colors = ThorTheme.colors
+private fun GameSectionTitle(text: String, accent: Color) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -895,7 +897,7 @@ private fun GameSectionTitle(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = .76f),
+            color = accent.copy(alpha = .9f),
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -903,7 +905,7 @@ private fun GameSectionTitle(text: String) {
             modifier = Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(colors.outline.copy(alpha = .15f)),
+                .background(platformAccentBrush(accent, alpha = .24f)),
         )
     }
 }

@@ -566,6 +566,19 @@ int LiSendMouseMoveEvent(short deltaX, short deltaY);
 // referenceWidth and referenceHeight to your window width and height.
 int LiSendMousePositionEvent(short x, short y, short referenceWidth, short referenceHeight);
 
+/**
+ * @brief Queue an absolute mouse position for a particular streamed display.
+ *
+ * @param x Horizontal coordinate in the reference plane.
+ * @param y Vertical coordinate in the reference plane.
+ * @param referenceWidth Width of the reference plane.
+ * @param referenceHeight Height of the reference plane.
+ * @param displayIndex Zero for the primary display or one for the secondary display.
+ * @return Zero on success or a negative error code.
+ */
+int LiSendMousePositionEventForDisplay(short x, short y, short referenceWidth, short referenceHeight,
+                                       uint16_t displayIndex);
+
 // This function queues a mouse position update event to be sent to the remote server, so
 // all of the limitations of LiSendMousePositionEvent() mentioned above apply here too!
 //
@@ -584,6 +597,20 @@ int LiSendMousePositionEvent(short x, short y, short referenceWidth, short refer
 // like on Android or iOS, and the OS cannot provide raw unaccelerated mouse motion when capturing.
 // Using this function avoids double-acceleration in cases when the client motion is also accelerated.
 int LiSendMouseMoveAsMousePositionEvent(short deltaX, short deltaY, short referenceWidth, short referenceHeight);
+
+/**
+ * @brief Queue relative mouse motion using an absolute cursor scoped to one display.
+ *
+ * @param deltaX Horizontal motion in the reference plane.
+ * @param deltaY Vertical motion in the reference plane.
+ * @param referenceWidth Width of the reference plane.
+ * @param referenceHeight Height of the reference plane.
+ * @param displayIndex Zero for the primary display or one for the secondary display.
+ * @return Zero on success or a negative error code.
+ */
+int LiSendMouseMoveAsMousePositionEventForDisplay(short deltaX, short deltaY,
+                                                  short referenceWidth, short referenceHeight,
+                                                  uint16_t displayIndex);
 
 // Error return value to indicate that the requested functionality is not supported by the host
 #define LI_ERR_UNSUPPORTED -5501
@@ -635,6 +662,24 @@ int LiSendMouseMoveAsMousePositionEvent(short deltaX, short deltaY, short refere
 #define LI_ROT_UNKNOWN 0xFFFF
 int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, float pressureOrDistance,
                      float contactAreaMajor, float contactAreaMinor, uint16_t rotation);
+
+/**
+ * @brief Queue a touchscreen event for a particular streamed display.
+ *
+ * @param eventType One of the `LI_TOUCH_EVENT_*` values.
+ * @param pointerId Stable identifier for this contact.
+ * @param x Normalized horizontal coordinate.
+ * @param y Normalized vertical coordinate.
+ * @param pressureOrDistance Normalized pressure or hover distance.
+ * @param contactAreaMajor Normalized major contact axis.
+ * @param contactAreaMinor Normalized minor contact axis.
+ * @param rotation Contact rotation, or `LI_ROT_UNKNOWN`.
+ * @param displayIndex Zero for the primary display or one for the secondary display.
+ * @return Zero on success, `LI_ERR_UNSUPPORTED`, or another negative error code.
+ */
+int LiSendTouchEventForDisplay(uint8_t eventType, uint32_t pointerId, float x, float y,
+                               float pressureOrDistance, float contactAreaMajor,
+                               float contactAreaMinor, uint16_t rotation, uint8_t displayIndex);
 
 // This function is similar to LiSendTouchEvent() but allows additional parameters relevant for pen
 // input, including tilt and buttons. Tilt is in degrees from vertical in Z dimension (perpendicular

@@ -87,6 +87,14 @@ fun localProperty(name: String): String {
 
 dependencies {
     api(projects.core.moonlight)
+    /*
+     * `api`, because the streaming layer used to be a package inside this module
+     * and `:app` still reaches it through here — the pointer service watches
+     * `StreamPresence` to know a stream is up.
+     *
+     * It also carries the process's one `OkHttpClient`, which moved with it.
+     */
+    api(projects.core.streaming)
     api(projects.core.model)
     api(projects.core.database)
     api(projects.core.datastore)

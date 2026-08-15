@@ -23,7 +23,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.annotation.RequiresApi
 import com.thor.core.common.capture.ScreenshotBridge
 import com.thor.core.common.log.ThorLog
-import com.thor.data.stream.StreamPresence
+import com.thor.core.streaming.StreamPresence
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.display.DisplayTopology
 import com.thor.core.input.MouseController
@@ -36,6 +36,7 @@ import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.ThemeMode
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -47,8 +48,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.coroutines.resume
 import kotlin.math.abs
@@ -83,6 +84,11 @@ class ThorMouseService : AccessibilityService() {
     @Inject lateinit var screenshots: ScreenshotBridge
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** One reusable callback thread; creating an executor per frame leaked threads. */
+    private val screenshotExecutor = Executors.newSingleThreadExecutor()
+    private val pendingScreenshots =
+        ConcurrentHashMap.newKeySet<CancellableContinuation<Bitmap?>>()
     private var overlay: PointerOverlay? = null
     private var settings = MouseSettings()
 
@@ -249,6 +255,11 @@ class ThorMouseService : AccessibilityService() {
         // so it is put away rather than left up and unresponsive.
         if (!mouse.launcherForeground) mouse.setActive(false)
         scope.cancel()
+        pendingScreenshots.toList().forEach { continuation ->
+            if (continuation.isActive) continuation.resume(null)
+        }
+        pendingScreenshots.clear()
+        screenshotExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -268,29 +279,30 @@ class ThorMouseService : AccessibilityService() {
      * caller can write the file and report the result as one operation.
      */
     @RequiresApi(Build.VERSION_CODES.R)
-    private suspend fun captureDisplay(displayId: Int): ByteArray? =
+    private suspend fun captureDisplay(displayId: Int): Bitmap? =
         suspendCancellableCoroutine { continuation ->
-            takeScreenshot(
-                displayId,
-                Executors.newSingleThreadExecutor(),
-                object : TakeScreenshotCallback {
+            pendingScreenshots += continuation
+            continuation.invokeOnCancellation { pendingScreenshots -= continuation }
+            runCatching {
+                takeScreenshot(
+                    displayId,
+                    screenshotExecutor,
+                    object : TakeScreenshotCallback {
                     override fun onSuccess(result: ScreenshotResult) {
-                        val bytes = result.hardwareBuffer.use { buffer ->
+                        val bitmap = result.hardwareBuffer.use { buffer ->
                             val hardware = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
-                            // A hardware bitmap has no pixels to read; the copy is
-                            // what makes it compressible, and is why this is not
-                            // simply `hardware.compress`.
+                            // The compositor and PNG writer both need ordinary
+                            // pixels. A hardware bitmap is only a handle to GPU
+                            // memory and becomes invalid when the buffer closes.
                             val software = hardware?.copy(Bitmap.Config.ARGB_8888, false)
                             hardware?.recycle()
-                            software?.let { bitmap ->
-                                ByteArrayOutputStream().use { out ->
-                                    bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, out)
-                                    bitmap.recycle()
-                                    out.toByteArray()
-                                }
-                            }
+                            software
                         }
-                        if (continuation.isActive) continuation.resume(bytes)
+                        if (pendingScreenshots.remove(continuation) && continuation.isActive) {
+                            continuation.resume(bitmap)
+                        } else {
+                            bitmap?.recycle()
+                        }
                     }
 
                     override fun onFailure(errorCode: Int) {
@@ -298,10 +310,18 @@ class ThorMouseService : AccessibilityService() {
                         // capture over a secure window, which is a correct refusal
                         // and something the user may simply be looking at.
                         ThorLog.w(TAG, "Screenshot refused on display $displayId (code $errorCode)")
-                        if (continuation.isActive) continuation.resume(null)
+                        if (pendingScreenshots.remove(continuation) && continuation.isActive) {
+                            continuation.resume(null)
+                        }
                     }
-                },
-            )
+                    },
+                )
+            }.onFailure { error ->
+                ThorLog.w(TAG, "Screenshot request failed on display $displayId", error)
+                if (pendingScreenshots.remove(continuation) && continuation.isActive) {
+                    continuation.resume(null)
+                }
+            }
         }
 
     /**
@@ -974,7 +994,6 @@ class ThorMouseService : AccessibilityService() {
         const val TAG = "Pointer"
 
         /** Ignored by the PNG encoder, which is lossless; required by the call. */
-        const val PNG_QUALITY = 100
 
         /** Long enough for a removed overlay to stop being composited. */
         const val OVERLAY_SETTLE_MS = 120L

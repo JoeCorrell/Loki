@@ -233,11 +233,11 @@ private fun Subject(state: FilesUiState) {
                 Pill("${clipboard.verb} ${clipboard.paths.size}", accent = true)
             }
 
-            state.message?.let {
+            (state.message ?: state.notice)?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelMedium,
-                    color = colors.error,
+                    color = if (state.message != null) colors.error else colors.cursor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = MESSAGE_WIDTH.dp),

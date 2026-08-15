@@ -1,5 +1,7 @@
 package com.thor.feature.home.grid
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -33,6 +35,8 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.FolderStyle
@@ -367,23 +371,42 @@ fun PageIndicators(
     currentPage: Int,
     modifier: Modifier = Modifier,
 ) {
+    // A single dot is not navigation information; it looked like an orphaned
+    // square above the bottom bar on square-corner themes. No indicator also
+    // gives a one-page grid the height back.
+    if (pageCount <= 1) return
+
     val colors = ThorTheme.colors
+    val motion = ThorTheme.motion
+    val safePage = currentPage.coerceIn(0, pageCount - 1)
     Row(
-        modifier = modifier,
+        modifier = modifier.semantics {
+            contentDescription = "Page ${safePage + 1} of $pageCount"
+        },
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(pageCount) { index ->
-            val active = index == currentPage
+            val active = index == safePage
+            val width by animateDpAsState(
+                targetValue = if (active) ACTIVE_INDICATOR_WIDTH.dp else INACTIVE_INDICATOR_WIDTH.dp,
+                animationSpec = motion.tweenSpec(motion.selectionMillis),
+                label = "pageIndicatorWidth",
+            )
+            val tint by animateColorAsState(
+                targetValue = if (active) {
+                    colors.cursor
+                } else {
+                    colors.onSurfaceVariant.copy(alpha = 0.46f)
+                },
+                animationSpec = motion.tweenSpec(motion.selectionMillis),
+                label = "pageIndicatorTint",
+            )
             Box(
                 modifier = Modifier
-                    .size(if (active) ACTIVE_DOT.dp else INACTIVE_DOT.dp)
+                    .size(width = width, height = INDICATOR_HEIGHT.dp)
                     .background(
-                        color = if (active) {
-                            colors.cursor
-                        } else {
-                            colors.onSurfaceVariant.copy(alpha = 0.5f)
-                        },
+                        color = tint,
                         shape = ThorTheme.shapes.pill,
                     ),
             )
@@ -394,8 +417,9 @@ fun PageIndicators(
 /** Cumulative zoom change required before a pinch is written to settings. */
 private const val PINCH_COMMIT_THRESHOLD = 0.12f
 
-private const val ACTIVE_DOT = 8
-private const val INACTIVE_DOT = 5
+private const val ACTIVE_INDICATOR_WIDTH = 20
+private const val INACTIVE_INDICATOR_WIDTH = 6
+private const val INDICATOR_HEIGHT = 6
 
 /**
  * Bounds on the derived spacing.

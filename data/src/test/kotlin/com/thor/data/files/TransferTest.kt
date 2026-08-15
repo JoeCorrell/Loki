@@ -333,4 +333,54 @@ class TransferTest {
         assertThat(File(to, "game.sfc").readBytes()).isEqualTo(bytes)
         coVerify(exactly = 1) { remote.deleteTree(sourcePath) }
     }
+
+    /**
+     * Size equality is not integrity: a device or server can return the requested
+     * byte count with damaged content. The staged tree is read back and compared
+     * to the digest produced while the source was copied before a move may delete
+     * anything.
+     */
+    @Test
+    fun `same size corruption is refused and a move keeps its source`() = runTest {
+        val to = folder("to")
+        val sourcePath = "smb://nas/share/game.sfc"
+        val original = "cartridge".toByteArray()
+        val corrupted = "Xartridge".toByteArray()
+        val remote = mockk<SmbFileSource>()
+        every { remote.handles(any()) } answers {
+            firstArg<String>().startsWith("smb://")
+        }
+        every { remote.nameOf(sourcePath) } returns "game.sfc"
+        coEvery { remote.exists(sourcePath) } returns true
+        coEvery { remote.sizeOnDisk(sourcePath) } returns original.size.toLong()
+        coEvery { remote.isDirectory(sourcePath) } returns false
+        coEvery { remote.openRead(sourcePath) } returns ByteArrayInputStream(original)
+        coEvery { remote.deleteTree(sourcePath) } returns true
+
+        val crossSource = FileRepository(
+            local = LocalFileSource(),
+            remote = remote,
+            discovery = mockk(relaxed = true),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+
+        val result = crossSource.transfer(
+            paths = listOf(sourcePath),
+            destination = to.absolutePath,
+            move = true,
+            onProgress = { copied, total ->
+                if (copied == total) {
+                    to.listFiles()
+                        .orEmpty()
+                        .single { it.name.startsWith(".loki-part-") }
+                        .writeBytes(corrupted)
+                }
+            },
+        )
+
+        assertThat(result).isInstanceOf(FileResult.Failed::class.java)
+        assertThat(File(to, "game.sfc").exists()).isFalse()
+        assertThat(to.list().orEmpty().none { it.startsWith(".loki-part-") }).isTrue()
+        coVerify(exactly = 0) { remote.deleteTree(sourcePath) }
+    }
 }

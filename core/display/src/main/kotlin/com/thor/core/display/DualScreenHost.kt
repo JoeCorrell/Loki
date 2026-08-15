@@ -47,6 +47,14 @@ fun SecondaryDisplay(
      */
     enabled: () -> Boolean,
     /**
+     * Whether the presentation may remain visible after its activity stops.
+     *
+     * The launcher keeps this enabled because an app on the other panel must not
+     * uncover Android's stock home screen. Standalone activities turn it off so
+     * pressing Home or switching tasks dismisses every window they own.
+     */
+    keepVisibleWhileStopped: Boolean = true,
+    /**
      * Lets this panel take focus, making it both typable and the key target.
      *
      * Off by default: focus here costs the activity its own, so it is only worth
@@ -89,6 +97,7 @@ fun SecondaryDisplay(
     val currentKeyDispatcher by rememberUpdatedState(keyDispatcher)
     val currentMotionDispatcher by rememberUpdatedState(motionDispatcher)
     val currentEnabled by rememberUpdatedState(enabled)
+    val currentKeepVisibleWhileStopped by rememberUpdatedState(keepVisibleWhileStopped)
     val currentTakesFocus by rememberUpdatedState(takesFocus)
     val currentVisibilityListener by rememberUpdatedState(onVisibilityChanged)
 
@@ -218,8 +227,20 @@ fun SecondaryDisplay(
          * the first moment it can succeed is exactly this event.
          */
         val observer = LifecycleEventObserver { _, event ->
-            val canShowNow = event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME
-            if (canShowNow && currentEnabled()) show()
+            when (
+                secondaryDisplayLifecycleAction(
+                    event = event,
+                    enabled = currentEnabled(),
+                    keepVisibleWhileStopped = currentKeepVisibleWhileStopped,
+                )
+            ) {
+                SecondaryDisplayLifecycleAction.SHOW -> show()
+                SecondaryDisplayLifecycleAction.HIDE -> {
+                    slot.hide()
+                    currentVisibilityListener?.invoke(false)
+                }
+                SecondaryDisplayLifecycleAction.NONE -> Unit
+            }
         }
         activity.lifecycle.addObserver(observer)
 
@@ -251,6 +272,28 @@ fun SecondaryDisplay(
             activity.lifecycle.removeObserver(observer)
         }
     }
+}
+
+/** The presentation change required by an activity lifecycle event. */
+internal enum class SecondaryDisplayLifecycleAction { SHOW, HIDE, NONE }
+
+/**
+ * Resolves activity lifecycle events without coupling the policy to a window.
+ *
+ * @param event Lifecycle event delivered by the hosting activity.
+ * @param enabled Whether the caller currently wants the presentation.
+ * @param keepVisibleWhileStopped Whether an off-screen activity may retain it.
+ */
+internal fun secondaryDisplayLifecycleAction(
+    event: Lifecycle.Event,
+    enabled: Boolean,
+    keepVisibleWhileStopped: Boolean,
+): SecondaryDisplayLifecycleAction = when {
+    (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) && enabled ->
+        SecondaryDisplayLifecycleAction.SHOW
+    event == Lifecycle.Event.ON_STOP && !keepVisibleWhileStopped ->
+        SecondaryDisplayLifecycleAction.HIDE
+    else -> SecondaryDisplayLifecycleAction.NONE
 }
 
 /**

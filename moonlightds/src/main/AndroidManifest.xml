@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Finding a streaming PC on the local network.
+
+      mDNS is multicast, and Android drops multicast packets to the app layer
+      unless this is held — so without it `NsdManager` starts, reports no error,
+      and simply never finds anything. Neither is a runtime permission; both are
+      granted at install. WIFI_STATE is what lets the multicast lock be taken.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- The on-screen keyboard's haptics, which follow the same settings Loki's do. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+      A stream is watched rather than touched, so the session window holds the
+      screen on for its own lifetime; see StreamSessionActivity.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!--
+      `usesCleartextTraffic`, for the same single reason it is set in Loki.
+
+      Sunshine answers `/serverinfo` on port 47989 over plain HTTP before any
+      pairing exists. Without this, discovery finds a PC and every request to it
+      fails. Nothing else here talks to the internet at all — this app has no
+      scrapers, no catalogue and no accounts, so the permission is narrower in
+      effect here than it is there.
+    -->
+    <application
+        android:name=".MoonlightApplication"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MoonlightDs">
+
+        <!--
+          The one window this app opens for itself.
+
+          `singleTask` so returning from a stream comes back to the instance that
+          started it rather than stacking a second. Landscape because the panel is
+          landscape and every screen here is laid out for it.
+
+          Deliberately *not* a home activity. Loki registers `CATEGORY_HOME` on
+          both displays because it is a launcher and has to answer the Home
+          button; this is an ordinary application, and claiming the home role
+          would change what the device does when Loki is not installed. The
+          second panel is reached the same way the session reaches it — through a
+          `Presentation` this activity owns — which needs no such declaration.
+        -->
+        <activity
+            android:name=".MoonlightActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.MoonlightDs">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          The stream window is declared by `:feature:stream` and merged in from
+          there, exactly as it is for Loki, so the two apps cannot disagree about
+          its launch mode or its `configChanges` list. Only the theme is stated
+          here, which is the one attribute that is genuinely this app's.
+        -->
+        <activity
+            android:name="com.thor.feature.stream.session.StreamSessionActivity"
+            android:theme="@style/Theme.MoonlightDs"
+            tools:node="merge" />
+    </application>
+
+</manifest>

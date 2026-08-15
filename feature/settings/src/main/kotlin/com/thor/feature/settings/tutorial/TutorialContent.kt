@@ -1,184 +1,259 @@
 package com.thor.feature.settings.tutorial
 
+import com.thor.core.model.ControllerCommand
 import com.thor.core.model.LauncherExtension
 import com.thor.core.model.LauncherTab
 import com.thor.feature.settings.SettingsCategory
 
-/** Which screen a step's card is drawn on. */
-enum class TutorialPanel {
-    /** The panel holding the grid — the one the user is holding. */
-    GRID,
+/** Which display carries a walkthrough card. */
+enum class TutorialPanel { GRID, INFO }
 
-    /** The information panel. */
-    INFO,
-}
+/** A structural region that the coach mark leaves visible. */
+enum class TutorialSpot { NONE, GRID, NAV_BAR, PANEL }
 
 /**
- * What a step points at, as a region of the panel it is drawn on.
+ * One lesson in the interactive walkthrough.
  *
- * Named regions rather than measured bounds. A real coach mark has to know where
- * a view actually is, which means every surface reporting its position up to the
- * shell and staying correct through a re-layout, a density change and a panel
- * swap. These are structural facts instead — the grid is the panel above the
- * section bar, the bar is the strip along the bottom — so they cannot drift out
- * of step with a layout they never measured.
- */
-enum class TutorialSpot {
-    /** Nothing dimmed; the step is about the launcher rather than a place in it. */
-    NONE,
-
-    /** Everything above the section bar. */
-    GRID,
-
-    /** The strip along the bottom edge. */
-    NAV_BAR,
-
-    /** The whole panel, for a step about the panel itself. */
-    PANEL,
-}
-
-/**
- * One screen of the walkthrough.
- *
- * @param panel which screen the card appears on. Steps move between the two on
- *   purpose: an explanation of the grid belongs beside the grid, not on the far
- *   screen where the reader has to look away from the thing being described.
- * @param spot the region to leave lit on [panel], with the rest dimmed
- * @param settingsCategory when set, the settings overlay is opened on the *other*
- *   panel at this category, so the reader sees the real screen being described
+ * [detailPoints] keep the important rules scannable, while [practice] turns the
+ * lesson into a safe simulation. No practice command is sent to the live grid.
  */
 data class TutorialStep(
     val title: String,
     val body: String,
+    val chapter: String = "Learn Loki",
+    val detailPoints: List<String> = emptyList(),
     val hint: String? = null,
     val panel: TutorialPanel = TutorialPanel.GRID,
     val spot: TutorialSpot = TutorialSpot.NONE,
+    val demo: TutorialDemo = TutorialDemo.DUAL_SCREEN,
+    val practice: TutorialPractice? = null,
     val settingsCategory: SettingsCategory? = null,
 )
 
-/**
- * The guided tour.
- *
- * Built rather than declared, because two things about it depend on the device
- * it is running on: which settings categories exist (an extension the user has
- * not added has none), and which extension is being introduced.
- *
- * This replaced a version that was a document on the information panel. It read
- * well and pointed at nothing: every page described a surface the reader was not
- * looking at, including the grid, which was fully drawn on the other screen at
- * the time. A tour of a two-screen launcher has to use both screens.
- */
+/** Builds the first-run tour from the features and settings that actually exist. */
 object ThorTutorial {
 
-    /**
-     * The tour shown once, after the permission list.
-     *
-     * Ends with the settings rail, which is walked category by category from
-     * whatever the launcher actually has — so a fresh install with no extensions
-     * never mentions Movies or PC streaming, and never opens a category that is
-     * not there.
-     */
     fun base(enabledExtensions: Set<String>): List<TutorialStep> = buildList {
         add(
             TutorialStep(
-                title = "This screen is the grid",
-                body = "Your games and apps live here, and this is the panel you " +
-                    "drive with the controller.\n\nThe other screen shows " +
-                    "everything known about whatever the cursor is resting on.",
+                chapter = "Welcome",
+                title = "Meet your two-screen home",
+                body = "Loki keeps selection and controls on the display in your hands, " +
+                    "while the other display turns that selection into a useful detail view.",
+                detailPoints = listOf(
+                    "The highlighted card controls the art and information on the other screen.",
+                    "Games can launch on either display without changing where Home lives.",
+                    "Every lesson is safe: the practice area never launches or edits real items.",
+                ),
                 panel = TutorialPanel.GRID,
                 spot = TutorialSpot.PANEL,
+                demo = TutorialDemo.DUAL_SCREEN,
             ),
         )
         add(
             TutorialStep(
-                title = "And this one describes it",
-                body = "Box art, screenshots, developer, release year and how long " +
-                    "you have played — for whatever is selected on the other " +
-                    "screen.\n\nBoth panels are driven from one state, so they can " +
-                    "never disagree.",
+                chapter = "Controller basics",
+                title = "Move around the grid",
+                body = "Use the D-pad or left stick. Try every direction below; the sample " +
+                    "cursor moves, but your real Home selection stays untouched.",
+                detailPoints = listOf(
+                    "Holding a direction repeats after a short delay.",
+                    "Navigation follows your active controller profile and remapped buttons.",
+                ),
+                hint = "Complete all four controls to continue",
+                panel = TutorialPanel.GRID,
+                spot = TutorialSpot.GRID,
+                demo = TutorialDemo.NAVIGATION,
+                practice = TutorialPractice(
+                    title = "Move the sample cursor",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.NAVIGATE_UP, "Move up"),
+                        TutorialTask(ControllerCommand.NAVIGATE_DOWN, "Move down"),
+                        TutorialTask(ControllerCommand.NAVIGATE_LEFT, "Move left"),
+                        TutorialTask(ControllerCommand.NAVIGATE_RIGHT, "Move right"),
+                    ),
+                ),
+            ),
+        )
+        add(
+            TutorialStep(
+                chapter = "Controller basics",
+                title = "Open something, then come back",
+                body = "Confirm opens the selected game, app, folder, or action. Back closes " +
+                    "the current layer before it ever leaves the launcher.",
+                detailPoints = listOf(
+                    "The practice launch is only an animation; no application will open.",
+                    "Home always returns to Loki's resting Home screen.",
+                ),
+                panel = TutorialPanel.GRID,
+                spot = TutorialSpot.GRID,
+                demo = TutorialDemo.LAUNCH_AND_BACK,
+                practice = TutorialPractice(
+                    title = "Practice opening and returning",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.CONFIRM, "Open sample"),
+                        TutorialTask(ControllerCommand.BACK, "Return"),
+                    ),
+                ),
+            ),
+        )
+        add(
+            TutorialStep(
+                chapter = "Your library",
+                title = "Favorite and inspect anything",
+                body = "Favorite is the quickest way to build a personal shelf. Context opens " +
+                    "the complete action menu for the current game, app, folder, or file.",
+                detailPoints = listOf(
+                    "Context actions include edit, artwork, placement, emulator, hide, and remove.",
+                    "Removing a launcher entry never deletes its ROM unless an action says so explicitly.",
+                ),
+                hint = "These actions affect only the sample card",
+                panel = TutorialPanel.GRID,
+                spot = TutorialSpot.GRID,
+                demo = TutorialDemo.LIBRARY_ACTIONS,
+                practice = TutorialPractice(
+                    title = "Try two common actions",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.TOGGLE_FAVORITE, "Toggle favorite"),
+                        TutorialTask(ControllerCommand.CONTEXT_MENU, "Open actions"),
+                    ),
+                ),
+            ),
+        )
+        add(
+            TutorialStep(
+                chapter = "Your library",
+                title = "Pages and artwork",
+                body = "Page controls move through Home without walking every cell. Image controls " +
+                    "cycle the selected game's screenshots on the information display.",
+                detailPoints = listOf(
+                    "Pinch the grid to choose one of eight density presets.",
+                    "Empty cells remain empty and icons keep their chosen positions.",
+                ),
                 panel = TutorialPanel.INFO,
                 spot = TutorialSpot.PANEL,
+                demo = TutorialDemo.MEDIA_BROWSING,
+                practice = TutorialPractice(
+                    title = "Turn a page and change the image",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.PAGE_PREVIOUS, "Previous page"),
+                        TutorialTask(ControllerCommand.PAGE_NEXT, "Next page"),
+                        TutorialTask(ControllerCommand.CYCLE_IMAGE_PREVIOUS, "Previous image"),
+                        TutorialTask(ControllerCommand.CYCLE_IMAGE_NEXT, "Next image"),
+                    ),
+                ),
             ),
         )
         add(
             TutorialStep(
-                title = "Every icon stays where you put it",
-                body = "An entry sits in the cell you place it in, and an empty " +
-                    "cell stays empty. Nothing reflows when you add or remove " +
-                    "something.\n\nHold A to pick an icon up, move, and press A " +
-                    "again to drop it.",
-                hint = "Hold A to pick up  ·  A to drop  ·  B to cancel",
+                chapter = "Your library",
+                title = "Arrange without reflow",
+                body = "Hold Confirm to pick up a card, move it, then Confirm again to drop it. " +
+                    "Cancel leaves the original placement intact.",
+                detailPoints = listOf(
+                    "Folders keep large systems from taking over the Home grid.",
+                    "Sparse layouts and intentionally empty cells are preserved.",
+                ),
+                hint = "This lesson never changes your real layout",
                 panel = TutorialPanel.GRID,
                 spot = TutorialSpot.GRID,
+                demo = TutorialDemo.ARRANGE,
+                practice = TutorialPractice(
+                    title = "Pick up, then cancel safely",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.PICK_UP, "Pick up sample"),
+                        TutorialTask(ControllerCommand.BACK, "Cancel move"),
+                    ),
+                ),
             ),
         )
-        add(
-            TutorialStep(
-                title = "Pages and density",
-                body = "Pinch to snap between eight layouts, from 3×2 to 8×5. The " +
-                    "size of your library changes the number of pages, never how " +
-                    "much work a page costs to draw.",
-                hint = "L2 / R2 turn pages  ·  pinch to change density",
-                panel = TutorialPanel.GRID,
-                spot = TutorialSpot.GRID,
-            ),
-        )
-        add(
-            TutorialStep(
-                title = "Scanned games go into folders",
-                body = "One folder per system, so adding a console costs the grid a " +
-                    "single cell instead of three hundred. Anything you move out " +
-                    "stays where you put it.",
-                hint = "Y opens the menu for whatever is selected",
-                panel = TutorialPanel.GRID,
-                spot = TutorialSpot.GRID,
-            ),
-        )
-        /*
-         * Only when there is a bar to point at.
-         *
-         * The bar is drawn only once an extension has given it a second section
-         * to switch between, and the grid reserves no height for it otherwise.
-         * Teaching it regardless left a fresh install ringing an empty strip of
-         * grid and telling the reader to press Down onto a bar that is not on
-         * screen — and putting the cursor somewhere invisible if they did.
-         */
+
         val sections = LauncherTab.visible(enabledExtensions)
         if (sections.size > 1) {
             add(
                 TutorialStep(
-                    title = "The bar along the bottom",
-                    body = "Your sections live here — " +
-                        sections.joinToString(", ") { it.label } +
-                        ".\n\nPress Down past the last row of the grid to reach " +
-                        "it, then Left and Right to move between them.",
+                    chapter = "Sections",
+                    title = "Switch from the bottom rail",
+                    body = "Press Down past the final grid row to reach the section rail, then move " +
+                        "Left or Right between ${sections.joinToString(", ") { it.label }}.",
+                    detailPoints = listOf(
+                        "The rail appears only when an enabled extension adds another section.",
+                        "Returning Home restores the Home section and first page.",
+                    ),
                     panel = TutorialPanel.GRID,
                     spot = TutorialSpot.NAV_BAR,
+                    demo = TutorialDemo.NAVIGATION,
                 ),
             )
         }
+
         add(
             TutorialStep(
-                title = "The buttons",
-                body = "A launches and held picks up. B goes back. Y opens the " +
-                    "menu, X favourites.\n\nStart opens the section menu and " +
-                    "Select the app drawer. Click either stick for the shortcut " +
-                    "panel — search, settings, rescan and more.",
-                hint = "L1 / R1 flip screenshots  ·  L2 / R2 turn pages  ·  " +
-                    "Guide goes Home",
+                chapter = "Fast access",
+                title = "Open Loki's three utility layers",
+                body = "The side menu changes sections, the app drawer reaches installed apps, and " +
+                    "Shortcuts exposes search, settings, scan, files, recording, and more.",
+                detailPoints = listOf(
+                    "The labels below use logical actions, so they stay correct after remapping.",
+                    "Press Back to close whichever layer is currently on top.",
+                ),
                 panel = TutorialPanel.GRID,
-                spot = TutorialSpot.NONE,
+                demo = TutorialDemo.SHELL_TOOLS,
+                practice = TutorialPractice(
+                    title = "Open each simulated layer",
+                    tasks = listOf(
+                        TutorialTask(ControllerCommand.OPEN_SIDE_MENU, "Side menu"),
+                        TutorialTask(ControllerCommand.OPEN_APP_DRAWER, "App drawer"),
+                        TutorialTask(ControllerCommand.OPEN_SHORTCUTS, "Shortcuts"),
+                    ),
+                ),
             ),
         )
         add(
             TutorialStep(
-                title = "Typing, and pointing",
-                body = "Loki has its own keyboard, because Android's appears on the " +
-                    "wrong screen here.\n\nHold Start and Select to raise a cursor " +
-                    "you drive with the stick — for anything a gamepad cannot press.",
-                hint = "Right stick scrolls  ·  A clicks  ·  Y opens the keyboard",
+                chapter = "Beyond the launcher",
+                title = "Point and type on either screen",
+                body = "The accessibility service enables Loki's controller pointer and cross-app " +
+                    "typing for standard Android text fields.",
+                detailPoints = listOf(
+                    "Hold Start + Select to show the pointer; the left stick moves and the right stick scrolls.",
+                    "Use the pointer actions mapped under Controller & input for click, keyboard, and other tools.",
+                    "Android must show the service as On before these controls work outside Loki.",
+                ),
+                panel = TutorialPanel.INFO,
+                demo = TutorialDemo.POINTER,
+            ),
+        )
+        add(
+            TutorialStep(
+                chapter = "Files and sharing",
+                title = "Move files with a safety net",
+                body = "Files can browse local storage and SMB shares, copy or move folders, and " +
+                    "create or extract archives without publishing incomplete output.",
+                detailPoints = listOf(
+                    "Transfers write to staging, verify byte counts and SHA-256, then publish.",
+                    "An interrupted move keeps the source until the destination is verified.",
+                    "Opening Network shares automatically discovers SMB devices on the local network.",
+                ),
                 panel = TutorialPanel.GRID,
-                spot = TutorialSpot.NONE,
+                demo = TutorialDemo.DUAL_SCREEN,
+                settingsCategory = SettingsCategory.SYSTEM,
+            ),
+        )
+        add(
+            TutorialStep(
+                chapter = "Capture and companion",
+                title = "Keep tools beside a running game",
+                body = "The companion panel holds notes, screenshots, pointer and keyboard controls. " +
+                    "Recording can capture outside the launcher after Android grants screen capture.",
+                detailPoints = listOf(
+                    "Real-display capture follows both physical displays when Android exposes them.",
+                    "Launcher-composite recording captures Loki itself, not an app drawn over it.",
+                    "Recording audio is microphone or room audio, not clean internal app audio.",
+                ),
+                panel = TutorialPanel.GRID,
+                demo = TutorialDemo.DUAL_SCREEN,
+                settingsCategory = SettingsCategory.DISPLAY,
             ),
         )
 
@@ -186,93 +261,110 @@ object ThorTutorial {
 
         add(
             TutorialStep(
-                title = "That's everything",
-                body = "Add your systems, point Loki at your ROMs, and let it " +
-                    "scrape.\n\nThis tour is in Settings → About if you want it " +
-                    "again.",
+                chapter = "Ready",
+                title = "Loki is yours",
+                body = "Add systems and ROM folders, choose how the two displays behave, then make " +
+                    "the Home screen as sparse or as dense as you like.",
+                detailPoints = listOf(
+                    "Background scanning, scraping and playtime tracking continue while you browse.",
+                    "Replay this interactive walkthrough from Settings → About at any time.",
+                    "Nothing in this tour changed your library, layout, or files.",
+                ),
+                hint = "Press Done to return Home",
                 panel = TutorialPanel.GRID,
-                spot = TutorialSpot.NONE,
+                demo = TutorialDemo.READY,
             ),
         )
     }
 
-    /**
-     * A short tour for an extension, played the first time it is added.
-     *
-     * Separate from the base tour because it is read at a different moment — the
-     * user has just chosen to add this, so it answers "what did I just get" and
-     * nothing else.
-     */
+    /** A focused tour shown the first time an optional extension is enabled. */
     fun forExtension(extension: LauncherExtension): List<TutorialStep> = when (extension) {
         LauncherExtension.MOVIES -> listOf(
             TutorialStep(
-                title = "Movies is on the bar",
-                body = "A new section has appeared beside Home. It browses films " +
-                    "and shows, finds sources for a title, and plays them.",
+                chapter = "New extension",
+                title = "Movies is now on the section rail",
+                body = "Browse films and shows, inspect a title on the other display, resolve a " +
+                    "source, and play without leaving Loki.",
+                detailPoints = listOf(
+                    "Browsing and playback sources are configured independently.",
+                    "Removing the extension hides its UI but retains its settings.",
+                ),
                 panel = TutorialPanel.GRID,
                 spot = TutorialSpot.NAV_BAR,
             ),
             TutorialStep(
-                title = "It needs somewhere to look",
-                body = "Browsing works out of the box. Playing needs a source: a " +
-                    "URL based addon, a torrent indexer, or both — plus a debrid " +
-                    "account, which is where most of the reliability comes from.",
-                hint = "Everything is under Films & shows",
+                chapter = "New extension",
+                title = "Connect a playback source",
+                body = "Add a Stremio-compatible URL or Torznab indexer, then optionally connect a " +
+                    "debrid provider for more reliable source resolution.",
+                detailPoints = listOf(
+                    "Filters and playback behavior live in Films & shows.",
+                    "Source browsing requires a network connection.",
+                ),
                 panel = TutorialPanel.GRID,
+                demo = TutorialDemo.SETTINGS,
                 settingsCategory = SettingsCategory.MOVIES,
             ),
         )
 
         LauncherExtension.STREAM -> listOf(
             TutorialStep(
-                title = "Stream is on the bar",
-                body = "Loki can now find PCs on your network running Sunshine, " +
-                    "pair with one, and play what it offers — video, audio and " +
-                    "controller.",
+                chapter = "New extension",
+                title = "PC streaming is now on the rail",
+                body = "Loki discovers Sunshine hosts, pairs with a PIN, and streams video, audio, " +
+                    "controller input, and configured apps.",
+                detailPoints = listOf(
+                    "Hosts can also be entered manually when discovery is unavailable.",
+                    "Resolution, frame rate, bitrate, codec and audio are configurable.",
+                ),
                 panel = TutorialPanel.GRID,
                 spot = TutorialSpot.NAV_BAR,
             ),
             TutorialStep(
-                title = "While a game is streaming",
-                body = "The other panel becomes a trackpad and a keyboard, which is " +
-                    "the only way to type into a streamed desktop on this " +
-                    "device.\n\nPicture quality and how PCs are found are here.",
-                hint = "Back leaves a stream, or hold Start, Select, L1 and R1",
+                chapter = "New extension",
+                title = "The second screen stays useful",
+                body = "During a stream, the companion display can act as a trackpad and keyboard " +
+                    "for the remote computer.",
+                detailPoints = listOf(
+                    "Pairing and picture quality live in PC streaming settings.",
+                    "Back exits a stream; the emergency chord is Start + Select + L1 + R1.",
+                ),
                 panel = TutorialPanel.GRID,
+                demo = TutorialDemo.SETTINGS,
                 settingsCategory = SettingsCategory.STREAMING,
             ),
         )
     }
 
-    /**
-     * One step per settings category the launcher actually has.
-     *
-     * Read from [SettingsCategory.navigationEntries] rather than written out, so
-     * the tour and the rail can never disagree — a category hidden behind an
-     * extension is absent from both, and a category added later is described
-     * without anyone remembering to come back here.
-     */
     private fun settingsSteps(enabledExtensions: Set<String>): List<TutorialStep> {
         val categories = SettingsCategory.navigationEntries(enabledExtensions)
-
         return buildList {
             add(
                 TutorialStep(
-                    title = "Settings",
-                    body = "Opening on the other screen now. It is two levels: a " +
-                        "short list of categories, and inside each a handful of " +
-                        "pages.\n\nThe next few steps go through every one.",
-                    hint = "Stick click → Settings, any time",
+                    chapter = "Settings tour",
+                    title = "Settings opens on the other display",
+                    body = "The category rail stays short; each category contains a few focused " +
+                        "pages. The next lessons open the real category while explaining it here.",
+                    detailPoints = listOf(
+                        "Use Up and Down to choose a category, Confirm to enter, and Back to return.",
+                        "Settings are saved as soon as they change.",
+                    ),
+                    hint = "Shortcuts → Settings opens this from anywhere in Loki",
                     panel = TutorialPanel.GRID,
+                    demo = TutorialDemo.SETTINGS,
                     settingsCategory = categories.firstOrNull(),
                 ),
             )
             categories.forEach { category ->
+                val copy = CATEGORY_COPY[category]
                 add(
                     TutorialStep(
+                        chapter = "Settings tour",
                         title = category.title,
-                        body = CATEGORY_BODIES[category] ?: category.summary,
+                        body = copy?.first ?: category.summary,
+                        detailPoints = copy?.second.orEmpty(),
                         panel = TutorialPanel.GRID,
+                        demo = TutorialDemo.SETTINGS,
                         settingsCategory = category,
                     ),
                 )
@@ -280,38 +372,50 @@ object ThorTutorial {
         }
     }
 
-    /**
-     * What each category is for, in a sentence or two.
-     *
-     * Written out rather than taken from [SettingsCategory.summary], which is a
-     * rail label — four words meant to be scanned, not read. A category with
-     * nothing written here still appears in the tour with its label, so adding one
-     * degrades to terse rather than to missing.
-     */
-    private val CATEGORY_BODIES: Map<SettingsCategory, String> = mapOf(
-        SettingsCategory.APPEARANCE to
-            "Fifteen themes, each with a wallpaper chosen to go with it, plus " +
-            "corner shape and how much the interface moves.\n\nThe home screen " +
-            "lives here too: grid density, icon shape, the dock and the cursor.",
-        SettingsCategory.LIBRARY to
-            "Where your games come from. Add a system, point it at a folder, and " +
-            "Loki scans it and fetches box art, screenshots and descriptions.\n\n" +
-            "Artwork sources and icon packs are on the pages beside it.",
-        SettingsCategory.CONTROLS to
-            "Every button is remappable, and the tester on the first page shows " +
-            "you what the device is actually sending.\n\nThe pointer's speed, " +
-            "acceleration and scrolling are here, with haptics and sound.",
-        SettingsCategory.SYSTEM to
-            "How the two panels behave, how hard the launcher works for its " +
-            "animations, and the accessibility controls — contrast, text size, " +
-            "reduced motion.\n\nExtensions are added from here.",
-        SettingsCategory.ABOUT to
-            "Version, device and what has been scanned, plus the diagnostics: " +
-            "logs, a settings export, and a reset.\n\nThis walkthrough can be " +
-            "replayed from here whenever you want it.",
-        SettingsCategory.MOVIES to
-            "The catalogue, where sources come from, and how playback behaves.",
-        SettingsCategory.STREAMING to
-            "Picture quality, bandwidth, and how PCs on your network are found.",
+    private val CATEGORY_COPY: Map<SettingsCategory, Pair<String, List<String>>> = mapOf(
+        SettingsCategory.PROFILES to (
+            "Keep libraries, layouts, play history, preferences, and artwork choices separate for each player." to
+                listOf("Create or switch profiles here.", "Backup and restore always target the active profile.")
+            ),
+        SettingsCategory.APPEARANCE to (
+            "Choose among twenty-three generated light and dark themes, surface materials, wallpaper, text, clock, and motion." to
+                listOf("The theme editor can export and import visual themes.", "Reduced motion is also available under accessibility.")
+            ),
+        SettingsCategory.HOME_SCREEN to (
+            "Shape the grid, platform cards, cursor, density, dock, and native widgets without rebuilding your library." to
+                listOf("Grid mode supports sparse placement and widgets.", "Platform-card mode preserves widgets but does not display them.")
+            ),
+        SettingsCategory.LIBRARY to (
+            "Add systems, emulators and ROM folders, then control scanning, sorting, grouping, smart folders, and missing files." to
+                listOf("Archive and CHD formats are recognized during scans.", "Scans run in the background and preserve missing entries.")
+            ),
+        SettingsCategory.ARTWORK to (
+            "Configure descriptions, artwork, achievements, icon packs, manual matches, and provider credentials." to
+                listOf("Wikidata works without a key; other providers may require one.", "Manual art always remains available when automatic matching misses.")
+            ),
+        SettingsCategory.MOVIES to (
+            "Configure the catalogue, source providers, debrid accounts, filters, Trakt, and playback behavior." to
+                listOf("Imported extension files enable built-in code; they do not download executable plugins.")
+            ),
+        SettingsCategory.STREAMING to (
+            "Pair Sunshine hosts and tune resolution, frame rate, bitrate, codec, audio, controller and discovery settings." to
+                listOf("Automatic discovery and manual host entry can be used together.")
+            ),
+        SettingsCategory.CONTROLS to (
+            "Remap every logical action, tune navigation repeat and pointer behavior, and choose haptic and sound feedback." to
+                listOf("Button tester shows the raw control Loki receives.", "Profiles let different controllers keep different mappings.")
+            ),
+        SettingsCategory.DISPLAY to (
+            "Choose automatic, dual-display, split-single, single-screen or couch behavior, then tune effects, performance, and recording." to
+                listOf("Per-launch display targets can override the general mode.", "Couch UI scale is independent from handheld text scale.")
+            ),
+        SettingsCategory.SYSTEM to (
+            "Accessibility, profile backup, automatic network-share discovery, saved SMB servers, and optional extensions live here." to
+                listOf("Network shares scan when the page opens.", "Accessibility service status is shown before you leave Loki.")
+            ),
+        SettingsCategory.ABOUT to (
+            "Check build and device details, make Loki the default Home app, test buttons, enable diagnostics, reset settings, or replay this tour." to
+                listOf("Replay interactive walkthrough starts immediately and returns Home.", "Reset settings does not delete library data.")
+            ),
     )
 }

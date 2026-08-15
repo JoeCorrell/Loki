@@ -82,6 +82,8 @@ data class FilesUiState(
      * the clipboard line, in the accent, where it belongs.
      */
     val message: String? = null,
+    /** A successful recovery or other useful fact, styled as information rather than failure. */
+    val notice: String? = null,
 ) {
     val focused: FileEntry? get() = entries.getOrNull(cursor)
 

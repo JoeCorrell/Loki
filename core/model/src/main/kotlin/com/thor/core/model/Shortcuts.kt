@@ -14,6 +14,7 @@ enum class ShortcutAction(val label: String, val description: String) {
 
     APPS("Apps", "Open the app drawer"),
     SEARCH("Search", "Search the whole library"),
+    PLAY_COMPASS("Play compass", "Explainable picks from your own play history"),
     // The constant keeps its name: it is an identifier, not a label, and renaming
     // it would rewrite every stored shortcut placement that refers to it.
     THOR_SETTINGS("Loki", "Open Loki's settings"),
@@ -31,7 +32,7 @@ enum class ShortcutAction(val label: String, val description: String) {
      * display and keeps going into a game. Which one someone wants is a decision
      * they make each time, at the moment they press it.
      */
-    RECORD_SCREEN("Record screen", "Capture the top screen, including games"),
+    RECORD_SCREEN("Record screens", "Capture both displays, including other apps"),
 
     /**
      * One frame rather than a video, and filed against the game rather than dumped.

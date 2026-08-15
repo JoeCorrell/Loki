@@ -1,8 +1,12 @@
 package com.thor.core.common.capture
 
+import android.graphics.Bitmap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,9 +25,10 @@ import javax.inject.Singleton
  *
  * `AccessibilityService.takeScreenshot` is the other, and it needs no dialog —
  * the permission was granted once, when the pointer service was enabled. So the
- * capability lives on that service, and this is how the rest of the launcher
- * reaches it: the service binds itself on connect and clears itself on teardown,
- * exactly as [com.thor.core.input.MouseController] is shared with it.
+ * capability lives on that service, and this is how the rest of the launcher and
+ * the explicitly started dual-screen recorder reach it: the service binds itself
+ * on connect and clears itself on teardown, exactly as
+ * [com.thor.core.input.MouseController] is shared with it.
  *
  * Held as a singleton rather than passed, because a service's lifetime and a view
  * model's have nothing to do with each other and either may outlive the other.
@@ -31,7 +36,8 @@ import javax.inject.Singleton
 @Singleton
 class ScreenshotBridge @Inject constructor() {
 
-    private var capture: (suspend (displayId: Int) -> ByteArray?)? = null
+    @Volatile
+    private var captureFrame: (suspend (displayId: Int) -> Bitmap?)? = null
 
     private val _available = MutableStateFlow(false)
 
@@ -47,14 +53,14 @@ class ScreenshotBridge @Inject constructor() {
     val available: StateFlow<Boolean> = _available.asStateFlow()
 
     /** Called by the accessibility service as it connects. */
-    fun bind(block: suspend (displayId: Int) -> ByteArray?) {
-        capture = block
+    fun bind(block: suspend (displayId: Int) -> Bitmap?) {
+        captureFrame = block
         _available.value = true
     }
 
     /** Called as the service goes away, so nothing holds a dead reference to it. */
     fun unbind() {
-        capture = null
+        captureFrame = null
         _available.value = false
     }
 
@@ -64,7 +70,30 @@ class ScreenshotBridge @Inject constructor() {
      * Null rather than an exception: the service being off is an ordinary state
      * and not an error, and every caller has the same thing to do about it.
      */
-    suspend fun capture(displayId: Int): ByteArray? = capture?.invoke(displayId)
+    suspend fun capture(displayId: Int): ByteArray? {
+        val bitmap = captureBitmap(displayId) ?: return null
+        return withContext(Dispatchers.Default) {
+            try {
+                ByteArrayOutputStream().use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, out)
+                    out.toByteArray()
+                }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    /**
+     * A software bitmap of [displayId], for a consumer that needs pixels rather
+     * than a PNG file.
+     *
+     * The caller owns the returned bitmap and must recycle it. Keeping this route
+     * uncompressed matters to screen recording: encoding a 1080p PNG and decoding
+     * it again for every secondary-panel frame consumed more CPU than the video
+     * encoder itself and made the panel visibly lag behind.
+     */
+    suspend fun captureBitmap(displayId: Int): Bitmap? = captureFrame?.invoke(displayId)
 
     // ---- The other direction: the launcher telling the service things --------
 
@@ -97,4 +126,8 @@ class ScreenshotBridge @Inject constructor() {
     fun onCaptureRequested(block: suspend () -> Unit) { fileCapture = block }
 
     suspend fun captureAndFile() { fileCapture?.invoke() }
+
+    private companion object {
+        const val PNG_QUALITY = 100
+    }
 }

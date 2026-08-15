@@ -13,10 +13,10 @@
 static OpusMSDecoder* Decoder;
 static OPUS_MULTISTREAM_CONFIGURATION OpusConfig;
 
-static JavaVM *JVM;
+JavaVM *JVM;
 static pthread_key_t JniEnvKey;
 static pthread_once_t JniEnvKeyInitOnce = PTHREAD_ONCE_INIT;
-static jclass GlobalBridgeClass;
+jclass GlobalBridgeClass;
 static jmethodID BridgeDrSetupMethod;
 static jmethodID BridgeDrStartMethod;
 static jmethodID BridgeDrStopMethod;
@@ -77,6 +77,8 @@ JNIEnv* GetThreadEnv(void) {
     return env;
 }
 
+void initializeSecondDisplayBridge(JNIEnv* env, jclass clazz);
+
 JNIEXPORT void JNICALL
 Java_com_limelight_nvstream_jni_MoonBridge_init(JNIEnv *env, jclass clazz) {
     (*env)->GetJavaVM(env, &JVM);
@@ -86,6 +88,9 @@ Java_com_limelight_nvstream_jni_MoonBridge_init(JNIEnv *env, jclass clazz) {
     BridgeDrStopMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeDrStop", "()V");
     BridgeDrCleanupMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeDrCleanup", "()V");
     BridgeDrSubmitDecodeUnitMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeDrSubmitDecodeUnit", "([BIIIICJJ)I");
+    // The second display's decoder, resolved here so both bridges are looked up
+    // in the one place the bridge class is known to be loaded.
+    initializeSecondDisplayBridge(env, clazz);
     BridgeArInitMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeArInit", "(III)I");
     BridgeArStartMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeArStart", "()V");
     BridgeArStopMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeArStop", "()V");

@@ -76,7 +76,7 @@ fun ThemePreviewRow(
      * Every theme on offer, bundled shelves first and the user's own after.
      *
      * Passed rather than read from [ThemeRecipe.ALL], which is what lets a theme
-     * the user built appear here at all: `ALL` is the bundled fourteen and is
+     * the user built appear here at all: `ALL` is the bundled seventeen and is
      * deliberately closed, so the caller composes the two sets and this row draws
      * whatever it is handed.
      */

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.thor.feature.home
 
 import android.content.Context
@@ -7,9 +9,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -26,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
@@ -266,20 +271,6 @@ fun BottomScreen(
      * a bar's worth of empty panel below the grid and pushed every icon upward:
      * the launcher making room for furniture it had decided not to draw.
      */
-    val bottomClearance = when {
-        DOCK_ENABLED && dockSettings.visible ->
-            dockHeightFor(dockSettings) + dimens.spacingSmall
-
-        DOCK_ENABLED -> 0.dp
-        // Couch mode has no bottom bar at all — its sections run along the top —
-        // so nothing is owed to the bottom edge and the drawer runs right to it.
-        navBarVisible && !couchMode -> PanelLayout.NAV_BAR_HEIGHT.dp
-        else -> 0.dp
-    }
-    // Named for what the drawer actually wants: room at the bottom, whichever
-    // bar is putting it there.
-    val dockClearance = bottomClearance
-
     // Drives the Adaptive wallpaper: the highlighted game's system colours the
     // background, so it shifts as the cursor crosses platforms. Null for apps,
     // folders and empty cells, which falls back to the theme's own accent.
@@ -320,6 +311,31 @@ fun BottomScreen(
         userScale = if (couchMode) DisplaySettings.couchDensityScale(couchUiScale) else 1f,
         modifier = modifier,
     ) {
+    /*
+     * Android reports system insets in pixels. Resolve them after [DesignScale]
+     * installs its density so the space reserved here is exactly the space the
+     * navigation bar consumes below, rather than a dp value scaled twice.
+     */
+    val scaledDensity = LocalDensity.current
+    val navigationBarInset = if (navBarVisible && !couchMode) {
+        with(scaledDensity) {
+            WindowInsets.navigationBarsIgnoringVisibility.getBottom(this).toDp()
+        }
+    } else {
+        0.dp
+    }
+    val bottomClearance = when {
+        DOCK_ENABLED && dockSettings.visible ->
+            dockHeightFor(dockSettings) + dimens.spacingSmall
+
+        DOCK_ENABLED -> 0.dp
+        navBarVisible && !couchMode -> PanelLayout.NAV_BAR_HEIGHT.dp + navigationBarInset
+        else -> 0.dp
+    }
+    // Named for what the drawer actually wants: room at the bottom, whichever
+    // bar is putting it there.
+    val dockClearance = bottomClearance
+
     Box(modifier = Modifier.fillMaxSize()) {
         /*
          * Couch mode replaces the furniture, not the screen.
@@ -966,4 +982,3 @@ private fun ScanBanner(label: String?, modifier: Modifier = Modifier) {
         )
     }
 }
-

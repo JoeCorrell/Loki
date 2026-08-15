@@ -4,7 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,12 +86,12 @@ fun AboutPane(
         )
         RowDivider()
         ActionRow(
-            title = "Replay the walkthrough",
-            icon = Icons.Rounded.Replay,
-            subtitle = "The guided tour of both panels, the grid, the controls " +
-                "and every setting. Shown once when Loki is first set up.",
+            title = "Replay interactive walkthrough",
+            icon = Icons.Rounded.School,
+            subtitle = "Returns Home and starts the full two-screen tutorial, including safe " +
+                "controller practice, files, recording, accessibility, and each settings category.",
             focused = focusedRow == 1,
-            trailingLabel = "Replay",
+            trailingLabel = "START",
             onClick = viewModel::replayTutorial,
         )
         RowDivider()

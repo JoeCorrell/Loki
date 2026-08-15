@@ -3,7 +3,9 @@ package com.thor.launcher.capture
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,7 +54,17 @@ class ProjectionConsentActivity : ComponentActivity() {
             return
         }
 
-        consent.launch(manager.createScreenCaptureIntent())
+        val request = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // A dual-panel recording needs the full default display as its primary
+            // source. App-window sharing can end when that task closes and cannot
+            // represent transitions between games and Loki.
+            manager.createScreenCaptureIntent(
+                MediaProjectionConfig.createConfigForDefaultDisplay(),
+            )
+        } else {
+            manager.createScreenCaptureIntent()
+        }
+        consent.launch(request)
     }
 
     companion object {

@@ -7,11 +7,11 @@ import com.thor.core.model.ControllerCommand
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamApp
 import com.thor.core.model.StreamHost
-import com.thor.data.stream.LaunchFailure
-import com.thor.data.stream.LaunchStage
-import com.thor.data.stream.PairingState
-import com.thor.data.stream.StreamRepository
-import com.thor.data.stream.StreamSessionManager
+import com.thor.core.streaming.LaunchFailure
+import com.thor.core.streaming.LaunchStage
+import com.thor.core.streaming.PairingState
+import com.thor.core.streaming.StreamRepository
+import com.thor.core.streaming.StreamSessionManager
 import com.thor.feature.stream.couch.STREAM_COUCH_COLUMNS
 import com.thor.feature.stream.couch.STREAM_HELP_SECTIONS
 import dagger.hilt.android.lifecycle.HiltViewModel

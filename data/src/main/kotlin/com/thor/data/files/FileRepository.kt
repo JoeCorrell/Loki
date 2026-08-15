@@ -11,6 +11,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipEntry
@@ -43,6 +45,7 @@ class FileRepository @Inject constructor(
     /** Only for the settings page's "scan the network"; nothing here uses it. */
     private val discovery: SmbDiscovery,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
+    private val operationJournal: FileOperationJournal = InMemoryFileOperationJournal(),
 ) {
 
     /**
@@ -94,6 +97,62 @@ class FileRepository @Inject constructor(
 
     /** Asks the network what file servers are on it; see [SmbDiscovery]. */
     suspend fun discoverServers(): List<DiscoveredServer> = discovery.scan()
+
+    /**
+     * Resolves operations that were in flight when Loki's process stopped.
+     *
+     * Recovery has one deliberately conservative rule: it may remove only the
+     * exact hidden staging path recorded before bytes were written. A visible
+     * destination is always retained. The source of an interrupted move is also
+     * retained, even when the destination was fully published, because recovery
+     * cannot know whether a recursive source deletion had already started.
+     */
+    suspend fun recoverInterruptedOperations(): FileRecoveryReport = withContext(ioDispatcher) {
+        val records = operationJournal.pending()
+        var partialsRemoved = 0
+        var publishedKept = 0
+        var moveSourcesRetained = 0
+        var unresolved = 0
+
+        records.forEach { record ->
+            val holder = sourceFor(record.staging)
+            val stagingPresence = holder.presenceOf(record.staging)
+            val stagingResolved = when (stagingPresence) {
+                PathPresence.ABSENT -> true
+                PathPresence.PRESENT -> holder.cleanup(record.staging).also { removed ->
+                    if (removed) partialsRemoved++
+                }
+                PathPresence.UNKNOWN -> false
+            }
+
+            if (!stagingResolved) {
+                unresolved++
+                return@forEach
+            }
+
+            val destinationPresent = sourceFor(record.destination)
+                .presenceOf(record.destination) == PathPresence.PRESENT
+            if (destinationPresent) publishedKept++
+
+            if (
+                destinationPresent &&
+                record.removeSourcesAfterPublish &&
+                record.sources.any { sourceFor(it).presenceOf(it) == PathPresence.PRESENT }
+            ) {
+                moveSourcesRetained++
+            }
+
+            if (!operationJournal.finish(record.id)) unresolved++
+        }
+
+        FileRecoveryReport(
+            interrupted = records.size,
+            partialsRemoved = partialsRemoved,
+            publishedKept = publishedKept,
+            moveSourcesRetained = moveSourcesRetained,
+            unresolved = unresolved,
+        )
+    }
 
     // ---- Changing things ---------------------------------------------------
 
@@ -147,6 +206,7 @@ class FileRepository @Inject constructor(
         destination: String,
         move: Boolean,
         onProgress: (copiedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+        onVerifying: () -> Unit = {},
     ): FileResult = withContext(ioDispatcher) {
         val target = sourceFor(destination)
         if (!target.isDirectory(destination)) {
@@ -258,8 +318,21 @@ class FileRepository @Inject constructor(
                 return@forEachIndexed
             }
 
+            val operation = FileOperationRecord(
+                kind = if (move) FileOperationKind.MOVE else FileOperationKind.COPY,
+                sources = listOf(job.path),
+                destination = landing,
+                staging = staging,
+                removeSourcesAfterPublish = move,
+            )
+            if (!operationJournal.begin(operation)) {
+                copyFailures++
+                ThorLog.w(TAG, "Could not journal the copy of ${job.name}; no bytes were changed")
+                return@forEachIndexed
+            }
+
             val landed = try {
-                val stagedBytes = copyTree(job.source, job.path, target, staging) { chunk ->
+                val copiedTree = copyTree(job.source, job.path, target, staging) { chunk ->
                     copied += chunk
                     onProgress(copied, total)
                 }
@@ -269,21 +342,30 @@ class FileRepository @Inject constructor(
                  * byte. Measure both the bytes read and the tree now on disk
                  * before publishing it under the visible final name.
                  */
-                val storedBytes = target.sizeOnDisk(staging)
-                if (stagedBytes != size || storedBytes != size) {
+                onVerifying()
+                val storedTree = fingerprintTree(target, staging)
+                if (
+                    copiedTree.bytes != size ||
+                    storedTree.bytes != size ||
+                    copiedTree.sha256 != storedTree.sha256
+                ) {
                     throw IOException(
-                        "Verification failed: expected $size bytes, copied $stagedBytes, stored $storedBytes",
+                        "Verification failed: expected $size bytes, copied ${copiedTree.bytes}, " +
+                            "stored ${storedTree.bytes}, checksum match " +
+                            "${copiedTree.sha256 == storedTree.sha256}",
                     )
                 }
+                operationJournal.mark(operation.id, FileOperationPhase.VERIFIED)
                 if (target.exists(landing) || !target.moveWithin(staging, landing)) {
                     throw IOException("The destination changed before the copy could be committed")
                 }
+                operationJournal.mark(operation.id, FileOperationPhase.PUBLISHED)
                 true
             } catch (cancelled: CancellationException) {
-                target.cleanup(staging)
+                if (target.cleanup(staging)) operationJournal.finish(operation.id)
                 throw cancelled
             } catch (error: Exception) {
-                target.cleanup(staging)
+                if (target.cleanup(staging)) operationJournal.finish(operation.id)
                 ThorLog.w(TAG, "Could not copy ${job.name}: ${error.message}")
                 false
             }
@@ -299,6 +381,7 @@ class FileRepository @Inject constructor(
                     removeFailures++
                 }
             }
+            if (landed) operationJournal.finish(operation.id)
         }
 
         when {
@@ -330,6 +413,7 @@ class FileRepository @Inject constructor(
         destination: String,
         archiveName: String,
         onProgress: (writtenBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+        onVerifying: () -> Unit = {},
     ): FileResult = withContext(ioDispatcher) {
         val target = sourceFor(destination)
         if (!target.isDirectory(destination)) {
@@ -354,6 +438,15 @@ class FileRepository @Inject constructor(
         } catch (error: IOException) {
             return@withContext FileResult.Failed("Could not prepare $fileName")
         }
+        val operation = FileOperationRecord(
+            kind = FileOperationKind.COMPRESS,
+            sources = jobs.map(Move::path),
+            destination = archive,
+            staging = partial,
+        )
+        if (!operationJournal.begin(operation)) {
+            return@withContext FileResult.Failed("Could not safely prepare $fileName")
+        }
 
         try {
             ZipOutputStream(target.openWrite(partial).buffered()).use { zip ->
@@ -367,15 +460,20 @@ class FileRepository @Inject constructor(
                     }
                 }
             }
+            onVerifying()
+            validateZip(target, partial)
+            operationJournal.mark(operation.id, FileOperationPhase.VERIFIED)
             if (target.exists(archive) || !target.moveWithin(partial, archive)) {
                 throw IOException("The destination changed before the archive could be committed")
             }
+            operationJournal.mark(operation.id, FileOperationPhase.PUBLISHED)
+            operationJournal.finish(operation.id)
             FileResult.Done
         } catch (cancelled: CancellationException) {
-            target.cleanup(partial)
+            if (target.cleanup(partial)) operationJournal.finish(operation.id)
             throw cancelled
         } catch (error: Exception) {
-            target.cleanup(partial)
+            if (target.cleanup(partial)) operationJournal.finish(operation.id)
             ThorLog.w(TAG, "Could not compress into $fileName: ${error.message}")
             FileResult.Failed("Could not create $fileName")
         }
@@ -412,7 +510,17 @@ class FileRepository @Inject constructor(
         } catch (error: IOException) {
             return@withContext FileResult.Failed("Could not prepare to extract $name")
         }
+        val operation = FileOperationRecord(
+            kind = FileOperationKind.EXTRACT,
+            sources = listOf(path),
+            destination = target,
+            staging = staging,
+        )
+        if (!operationJournal.begin(operation)) {
+            return@withContext FileResult.Failed("Could not safely prepare to extract $name")
+        }
         if (!source.mkdirs(staging)) {
+            if (source.cleanup(staging)) operationJournal.finish(operation.id)
             return@withContext FileResult.Failed("Could not prepare to extract $name")
         }
 
@@ -483,15 +591,18 @@ class FileRepository @Inject constructor(
                 }
             }
             onProgress(total, total)
+            operationJournal.mark(operation.id, FileOperationPhase.VERIFIED)
             if (source.exists(target) || !source.moveWithin(staging, target)) {
                 throw IOException("The destination changed before extraction could be committed")
             }
+            operationJournal.mark(operation.id, FileOperationPhase.PUBLISHED)
+            operationJournal.finish(operation.id)
             FileResult.Done
         } catch (cancelled: CancellationException) {
-            source.cleanup(staging)
+            if (source.cleanup(staging)) operationJournal.finish(operation.id)
             throw cancelled
         } catch (error: Exception) {
-            source.cleanup(staging)
+            if (source.cleanup(staging)) operationJournal.finish(operation.id)
             ThorLog.w(TAG, "Could not extract $name: ${error.message}")
             when (error) {
                 is ArchiveLimitException -> FileResult.Failed(error.message ?: "The archive is too large")
@@ -516,21 +627,77 @@ class FileRepository @Inject constructor(
         to: FileSource,
         target: String,
         onChunk: (Long) -> Unit,
+    ): TreeFingerprint {
+        val digest = MessageDigest.getInstance(SHA_256)
+        val bytes = copyTreeNode(
+            from = from,
+            source = source,
+            to = to,
+            target = target,
+            relativePath = "",
+            digest = digest,
+            ancestors = HashSet(),
+            depth = 0,
+            onChunk = onChunk,
+        )
+        return TreeFingerprint(bytes, digest.digest().hex())
+    }
+
+    /** Copies one node while hashing the exact tree and bytes read from it. */
+    private suspend fun copyTreeNode(
+        from: FileSource,
+        source: String,
+        to: FileSource,
+        target: String,
+        relativePath: String,
+        digest: MessageDigest,
+        ancestors: MutableSet<String>,
+        depth: Int,
+        onChunk: (Long) -> Unit,
     ): Long {
         coroutineContext.ensureActive()
+        if (depth > MAX_TREE_DEPTH) throw IOException("The folder tree is too deep")
 
         if (from.isDirectory(source)) {
-            if (!to.mkdirs(target)) throw IOException("Could not create ${to.nameOf(target)}")
-            val children = from.children(source)
-                ?: throw IOException("Could not read ${from.nameOf(source)}")
-            var copied = 0L
-            children.forEach { child ->
-                val landing = to.childPath(target, from.nameOf(child))
-                copied = safeAdd(copied, copyTree(from, child, to, landing, onChunk))
+            digest.node(DIRECTORY_MARKER, relativePath)
+            val identity = from.identityOf(source)
+            if (!ancestors.add(identity)) throw IOException("The folder tree contains a loop")
+            try {
+                if (!to.mkdirs(target)) throw IOException("Could not create ${to.nameOf(target)}")
+                val children = from.children(source)
+                    ?.sortedWith(compareBy({ from.nameOf(it).lowercase(Locale.ROOT) }, from::nameOf))
+                    ?: throw IOException("Could not read ${from.nameOf(source)}")
+                var copied = 0L
+                children.forEach { child ->
+                    val childName = from.nameOf(child)
+                    val landing = to.childPath(target, childName)
+                    val childRelative = if (relativePath.isEmpty()) {
+                        childName
+                    } else {
+                        "$relativePath/$childName"
+                    }
+                    copied = safeAdd(
+                        copied,
+                        copyTreeNode(
+                            from = from,
+                            source = child,
+                            to = to,
+                            target = landing,
+                            relativePath = childRelative,
+                            digest = digest,
+                            ancestors = ancestors,
+                            depth = depth + 1,
+                            onChunk = onChunk,
+                        ),
+                    )
+                }
+                return copied
+            } finally {
+                ancestors.remove(identity)
             }
-            return copied
         }
 
+        digest.node(FILE_MARKER, relativePath)
         var copied = 0L
         from.openRead(source).use { input ->
             to.openWrite(target).use { output ->
@@ -540,6 +707,7 @@ class FileRepository @Inject constructor(
                     val read = input.read(buffer)
                     if (read <= 0) break
                     output.write(buffer, 0, read)
+                    digest.update(buffer, 0, read)
                     copied = safeAdd(copied, read.toLong())
                     onChunk(read.toLong())
                 }
@@ -547,6 +715,96 @@ class FileRepository @Inject constructor(
             }
         }
         return copied
+    }
+
+    /** Reads a completed staged tree back and hashes it before it is published. */
+    private suspend fun fingerprintTree(source: FileSource, path: String): TreeFingerprint {
+        val digest = MessageDigest.getInstance(SHA_256)
+        val bytes = fingerprintNode(
+            source = source,
+            path = path,
+            relativePath = "",
+            digest = digest,
+            ancestors = HashSet(),
+            depth = 0,
+        )
+        return TreeFingerprint(bytes, digest.digest().hex())
+    }
+
+    private suspend fun fingerprintNode(
+        source: FileSource,
+        path: String,
+        relativePath: String,
+        digest: MessageDigest,
+        ancestors: MutableSet<String>,
+        depth: Int,
+    ): Long {
+        coroutineContext.ensureActive()
+        if (depth > MAX_TREE_DEPTH) throw IOException("The copied tree is too deep")
+
+        if (source.isDirectory(path)) {
+            digest.node(DIRECTORY_MARKER, relativePath)
+            val identity = source.identityOf(path)
+            if (!ancestors.add(identity)) throw IOException("The copied tree contains a loop")
+            try {
+                val children = source.children(path)
+                    ?.sortedWith(compareBy({ source.nameOf(it).lowercase(Locale.ROOT) }, source::nameOf))
+                    ?: throw IOException("Could not verify ${source.nameOf(path)}")
+                var bytes = 0L
+                children.forEach { child ->
+                    val childName = source.nameOf(child)
+                    val childRelative = if (relativePath.isEmpty()) {
+                        childName
+                    } else {
+                        "$relativePath/$childName"
+                    }
+                    bytes = safeAdd(
+                        bytes,
+                        fingerprintNode(
+                            source = source,
+                            path = child,
+                            relativePath = childRelative,
+                            digest = digest,
+                            ancestors = ancestors,
+                            depth = depth + 1,
+                        ),
+                    )
+                }
+                return bytes
+            } finally {
+                ancestors.remove(identity)
+            }
+        }
+
+        digest.node(FILE_MARKER, relativePath)
+        var bytes = 0L
+        source.openRead(path).use { input ->
+            val buffer = ByteArray(BUFFER)
+            while (true) {
+                coroutineContext.ensureActive()
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+                bytes = safeAdd(bytes, read.toLong())
+            }
+        }
+        return bytes
+    }
+
+    /** Re-reads a new zip completely so CRC or truncation errors prevent publish. */
+    private suspend fun validateZip(source: FileSource, path: String) {
+        ZipInputStream(source.openRead(path).buffered()).use { zip ->
+            val buffer = ByteArray(BUFFER)
+            while (true) {
+                coroutineContext.ensureActive()
+                zip.nextEntry ?: break
+                while (true) {
+                    coroutineContext.ensureActive()
+                    if (zip.read(buffer) <= 0) break
+                }
+                zip.closeEntry()
+            }
+        }
     }
 
     /** Adds a file or a whole tree to an open archive, reporting each chunk. */
@@ -642,17 +900,68 @@ class FileRepository @Inject constructor(
         throw IOException("Could not reserve a temporary name")
     }
 
+    /**
+     * Presence with an unknown answer for an offline or unreadable parent.
+     *
+     * [FileSource.exists] intentionally flattens I/O errors to false for ordinary
+     * conflict checks. Recovery cannot: treating an offline SMB share as an
+     * absent staging item would discard the only record capable of cleaning it
+     * when the server comes back.
+     */
+    private suspend fun FileSource.presenceOf(path: String): PathPresence {
+        val parent = parentOf(path) ?: return runCatching {
+            if (exists(path)) PathPresence.PRESENT else PathPresence.ABSENT
+        }.getOrDefault(PathPresence.UNKNOWN)
+
+        return when (val listing = list(parent)) {
+            is FileListing.Loaded -> {
+                val wanted = identityOf(path)
+                if (listing.entries.any { identityOf(it.path) == wanted }) {
+                    PathPresence.PRESENT
+                } else {
+                    PathPresence.ABSENT
+                }
+            }
+            FileListing.Missing -> PathPresence.ABSENT
+            FileListing.NoAccess,
+            FileListing.Unreadable,
+            is FileListing.Offline
+            -> PathPresence.UNKNOWN
+        }
+    }
+
     /** Cleanup must finish even when the operation itself was cancelled. */
-    private suspend fun FileSource.cleanup(path: String) = withContext(NonCancellable) {
-        if (exists(path) && !deleteTree(path)) {
+    private suspend fun FileSource.cleanup(path: String): Boolean = withContext(NonCancellable) {
+        val removed = when (presenceOf(path)) {
+            PathPresence.ABSENT -> true
+            PathPresence.PRESENT -> deleteTree(path)
+            PathPresence.UNKNOWN -> false
+        }
+        if (!removed) {
             ThorLog.w(TAG, "Could not remove incomplete item $path")
         }
+        removed
+    }
+
+    /** Delimits the node type and relative path before its content bytes. */
+    private fun MessageDigest.node(marker: Byte, relativePath: String) {
+        update(marker)
+        update(relativePath.toByteArray(StandardCharsets.UTF_8))
+        update(PATH_TERMINATOR)
+    }
+
+    private fun ByteArray.hex(): String = joinToString(separator = "") { byte ->
+        "%02x".format(Locale.ROOT, byte.toInt() and 0xff)
     }
 
     /** One thing being copied, with the source that owns it. */
     private data class Move(val source: FileSource, val path: String) {
         val name: String get() = source.nameOf(path)
     }
+
+    private data class TreeFingerprint(val bytes: Long, val sha256: String)
+
+    private enum class PathPresence { PRESENT, ABSENT, UNKNOWN }
 
     private companion object {
         const val TAG = "Files"
@@ -669,6 +978,11 @@ class FileRepository @Inject constructor(
         const val BUFFER = 1024 * 1024
 
         const val ZIP = ".zip"
+
+        const val SHA_256 = "SHA-256"
+        const val DIRECTORY_MARKER: Byte = 0x44
+        const val FILE_MARKER: Byte = 0x46
+        const val PATH_TERMINATOR: Byte = 0
 
         /** Prefix on an incomplete copy. Dot-prefixed so ordinary listings hide it. */
         const val STAGING_PREFIX = ".loki-part-"

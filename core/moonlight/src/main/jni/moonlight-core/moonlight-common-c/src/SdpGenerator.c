@@ -1,4 +1,5 @@
 #include "Limelight-internal.h"
+#include "SecondStream.h"
 
 #define MAX_OPTION_NAME_LEN 128
 
@@ -311,12 +312,49 @@ static PSDP_OPTION getAttributesList(char*urlSafeAddr) {
     snprintf(payloadStr, sizeof(payloadStr), "%d", StreamConfig.fps);
     err |= addAttributeString(&optionHead, "x-nv-video[0].maxFPS", payloadStr);
 
+    /*
+     * The second display, when the client has two screens and asked for one.
+     *
+     * These fill in slot [1] of the four the protocol has always reserved, using
+     * the same attribute names slot [0] uses so no new grammar is introduced.
+     *
+     * `x-ml-video[1].enable` is the actual request, and it is separate on
+     * purpose: the `x-nv-video[1].*` slots have carried rateControlMode and
+     * transferProtocol boilerplate from every client for years, so a host cannot
+     * read their presence as intent. Without an explicit flag it would start a
+     * second encoder for clients that have never heard of one.
+     *
+     * A host that does not implement this ignores all five attributes, and the
+     * client discovers that from the RTSP SETUP for streamid=video/1/0 rather
+     * than from anything here -- see RtspConnection.c.
+     */
+    if (LiIsSecondDisplayRequested()) {
+        err |= addAttributeString(&optionHead, "x-ml-video[1].enable", "1");
+
+        snprintf(payloadStr, sizeof(payloadStr), "%d", SecondStreamConfig.width);
+        err |= addAttributeString(&optionHead, "x-nv-video[1].clientViewportWd", payloadStr);
+        snprintf(payloadStr, sizeof(payloadStr), "%d", SecondStreamConfig.height);
+        err |= addAttributeString(&optionHead, "x-nv-video[1].clientViewportHt", payloadStr);
+
+        snprintf(payloadStr, sizeof(payloadStr), "%d", SecondStreamConfig.fps);
+        err |= addAttributeString(&optionHead, "x-nv-video[1].maxFPS", payloadStr);
+
+        snprintf(payloadStr, sizeof(payloadStr), "%d", SecondStreamConfig.bitrate);
+        err |= addAttributeString(&optionHead, "x-nv-video[1].initialBitrateKbps", payloadStr);
+    }
+
     // Adjust the video packet size to account for encryption overhead
     if (EncryptionFeaturesEnabled & SS_ENC_VIDEO) {
         LC_ASSERT(StreamConfig.packetSize % 16 == 0);
         StreamConfig.packetSize -= sizeof(ENC_VIDEO_HEADER);
         LC_ASSERT(StreamConfig.packetSize % 16 == 0);
     }
+
+    // LiPrepareSecondDisplay() runs before ANNOUNCE generation, while the
+    // encrypted-video adjustment above happens here. Keep stream one's RTP/FEC
+    // framing exactly aligned with the packet size advertised to the host.
+    LiSetSecondDisplayPacketSize(StreamConfig.packetSize);
+
     snprintf(payloadStr, sizeof(payloadStr), "%d", StreamConfig.packetSize);
     err |= addAttributeString(&optionHead, "x-nv-video[0].packetSize", payloadStr);
 

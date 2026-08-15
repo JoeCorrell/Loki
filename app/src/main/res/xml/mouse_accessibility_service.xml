@@ -30,9 +30,10 @@
   app on another display and therefore something the launcher cannot capture on
   its own. The alternative is `MediaProjection`, which asks the system's consent
   dialog every time — on top of the very thing being photographed. Used only when
-  the user presses the screenshot action; nothing is captured on a timer, on an
-  event, or in the background, and every frame is written into the active
-  profile's own directory and nowhere else.
+  the user presses the screenshot action, and for secondary-display frames while
+  the user has explicitly started a screen recording. Recording is visible through
+  Android's projection indicator and Loki's foreground notification; frames go only
+  into that recording and are never retained separately.
 -->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"

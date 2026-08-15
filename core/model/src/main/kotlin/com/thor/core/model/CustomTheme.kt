@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 /**
  * A theme the user made.
  *
- * The same fourteen decisions a bundled [ThemeRecipe] makes, handed over. It is a
+ * The same semantic colour and material decisions a bundled [ThemeRecipe] makes,
+ * handed over. It is a
  * separate type rather than a `ThemeRecipe` with a name on it for one reason: a
  * recipe is written by hand in Kotlin and is therefore trusted, while this arrives
  * from a settings file or from a JSON document somebody was given, and neither can
@@ -29,6 +30,10 @@ data class CustomTheme(
     val accentHue: Float = 278f,
     /** How colourful the theme is at its loudest point. */
     val accentChroma: Float = 0.09f,
+    /** Relationship used by category colours and semantic defaults. */
+    val harmony: ThemeHarmony = ThemeHarmony.ANALOGOUS,
+    /** Strength of the twelve category/content tints. */
+    val tintChroma: Float = 0.13f,
     /** Degrees the secondary accent sits from the primary. */
     val secondaryHueShift: Float = 34f,
     /** Degrees the far end of the accent gradient sits from the primary. */
@@ -39,6 +44,16 @@ data class CustomTheme(
     val neutralHue: Float = 278f,
     /** How far the greys are tinted; 0 is a true neutral. */
     val neutralChroma: Float = 0.018f,
+    /**
+     * Independent semantic directions. Nullable so version-one exported themes
+     * retain their original generated relationships when decoded.
+     */
+    val backgroundHue: Float? = null,
+    val panelHue: Float? = null,
+    val controlHue: Float? = null,
+    val selectionHue: Float? = null,
+    val textHue: Float? = null,
+    val contentHue: Float? = null,
     /** How far this theme lifts its ground off the extreme the contrast picked. */
     val groundShift: Float = 0f,
 
@@ -64,6 +79,13 @@ data class CustomTheme(
      */
     val family: ThemeFamily get() = familyFor(accentChroma, accentHue)
 
+    val resolvedBackgroundHue: Float get() = backgroundHue ?: neutralHue
+    val resolvedPanelHue: Float get() = panelHue ?: neutralHue
+    val resolvedControlHue: Float get() = controlHue ?: accentHue
+    val resolvedSelectionHue: Float get() = selectionHue ?: (accentHue + cursorHueShift).asHue()
+    val resolvedTextHue: Float get() = textHue ?: neutralHue
+    val resolvedContentHue: Float get() = contentHue ?: (accentHue + secondaryHueShift).asHue()
+
     /**
      * This theme as the palette generator takes it, with every value clamped.
      *
@@ -82,11 +104,19 @@ data class CustomTheme(
         family = family,
         accentHue = accentHue.asHue(),
         accentChroma = accentChroma.coerceIn(ACCENT_CHROMA),
+        harmony = harmony,
+        tintChroma = tintChroma.coerceIn(TINT_CHROMA),
         secondaryHueShift = secondaryHueShift.coerceIn(HUE_OFFSET),
         accentSpread = accentSpread.coerceIn(ACCENT_SPREAD),
         cursorHueShift = cursorHueShift.coerceIn(HUE_OFFSET),
         neutralHue = neutralHue.asHue(),
         neutralChroma = neutralChroma.coerceIn(NEUTRAL_CHROMA),
+        backgroundHue = backgroundHue?.asHue(),
+        panelHue = panelHue?.asHue(),
+        controlHue = controlHue?.asHue(),
+        selectionHue = selectionHue?.asHue(),
+        textHue = textHue?.asHue(),
+        contentHue = contentHue?.asHue(),
         groundShift = groundShift.coerceIn(GROUND_SHIFT),
         material = ThemeMaterial(
             surface = SurfaceTreatment.forStyle(surfaceStyle),
@@ -136,6 +166,7 @@ data class CustomTheme(
          * silently cannot reach its own end stop.
          */
         val ACCENT_CHROMA = 0f..0.24f
+        val TINT_CHROMA = 0f..0.24f
         val HUE_OFFSET = -180f..180f
         val ACCENT_SPREAD = -90f..90f
 
@@ -194,11 +225,19 @@ data class CustomTheme(
             name = name,
             accentHue = recipe.accentHue,
             accentChroma = recipe.accentChroma,
+            harmony = recipe.harmony,
+            tintChroma = recipe.tintChroma,
             secondaryHueShift = recipe.secondaryHueShift,
             accentSpread = recipe.accentSpread,
             cursorHueShift = recipe.cursorHueShift,
             neutralHue = recipe.neutralHue,
             neutralChroma = recipe.neutralChroma,
+            backgroundHue = recipe.backgroundHue,
+            panelHue = recipe.panelHue,
+            controlHue = recipe.controlHue,
+            selectionHue = recipe.selectionHue,
+            textHue = recipe.textHue,
+            contentHue = recipe.contentHue,
             groundShift = recipe.groundShift,
             surfaceStyle = recipe.material.surface.style,
             cornerRadiusDp = recipe.material.cornerRadiusDp,

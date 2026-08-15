@@ -22,18 +22,21 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.ui.feedback.ThorFeedback
 import com.thor.feature.stream.R
-import com.thor.data.stream.SessionState
+import com.thor.core.streaming.SecondDisplayRequest
+import com.thor.core.streaming.SessionState
 import com.thor.core.model.SessionQuality
-import com.thor.data.stream.StreamInput
-import com.thor.data.stream.StreamPad
+import com.thor.core.streaming.StreamInput
+import com.thor.core.streaming.StreamPad
 import com.thor.feature.stream.panel.StreamPanelController
-import com.thor.data.stream.StreamPresence
-import com.thor.data.stream.StreamSessionManager
-import com.thor.data.stream.StreamTouch
+import com.thor.core.streaming.StreamPresence
+import com.thor.core.streaming.StreamSessionManager
+import com.thor.core.streaming.StreamTouch
+import com.thor.core.streaming.StreamVideoSize
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -84,6 +87,29 @@ class StreamSessionActivity : ComponentActivity() {
     private val panel = StreamPanelController(pad) { cue -> feedback?.play(cue) }
 
     /**
+     * The second panel's surface, when it is showing the PC's second display.
+     *
+     * Held by the activity rather than by the presentation's composition,
+     * because [connect] has to wait for it and that runs before — and
+     * independently of — the window that produces it.
+     */
+    private val secondDisplaySurface = SecondDisplaySurface(
+        onSurfaceDestroying = { sessions.detachSecondDisplay() },
+    )
+
+    /**
+     * The second panel's own pixels, read once when the session starts.
+     *
+     * Asked for as the mode rather than sending the first display's, so the host
+     * encodes what this screen can actually show. Falls back to the first
+     * display's dimensions when there is no second panel, which only matters if
+     * the setting is on with nowhere to draw — and in that case nothing is ever
+     * requested anyway, because there is no surface to wait for.
+     */
+    private var secondPanelWidth: Int = 0
+    private var secondPanelHeight: Int = 0
+
+    /**
      * The launcher's haptics and sound, for the on-screen keyboard.
      *
      * Built once the user's settings have been read, so it is null for the first
@@ -131,6 +157,27 @@ class StreamSessionActivity : ComponentActivity() {
         input.updateSettings(quality)
         pad.updateSettings(quality)
         touch.updateSettings(quality)
+        touch.updateVideoSize(StreamVideoSize(quality.width, quality.height))
+
+        /*
+         * The second panel's real pixel size, for the mode this session asks the
+         * host to encode.
+         *
+         * Read from the display itself rather than assumed, because it is the one
+         * number that makes the second stream worth having: sending the first
+         * panel's mode would have the host encode a picture this screen then
+         * scales, which costs bandwidth to produce detail that is thrown away.
+         *
+         * Falls back to the streaming display's own size when there is no second
+         * panel. That only arises if the setting is on with nowhere to draw, and
+         * in that case nothing is requested anyway — `connect` waits for a
+         * surface that never appears and starts with one display.
+         */
+        secondaryDisplayMetrics(this).let { (width, height) ->
+            secondPanelWidth = width
+            secondPanelHeight = height
+            secondDisplaySurface.setVideoSize(StreamVideoSize(width, height))
+        }
 
         /*
          * Follows the launcher's feedback settings rather than vibrating on its
@@ -196,6 +243,11 @@ class StreamSessionActivity : ComponentActivity() {
                                 // So the panel's keyboard is the user's keyboard
                                 // and not THOR's default one; see StreamPadHost.
                                 settings = settings,
+                                // Only handed over when the setting asks for it,
+                                // so a session that wants a trackpad never builds
+                                // a video surface it will not draw into.
+                                secondDisplaySurface = secondDisplaySurface
+                                    .takeIf { quality.secondDisplay },
                             )
                         }
                     },
@@ -244,13 +296,73 @@ class StreamSessionActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             /*
+             * The second panel's surface, when it is to be a second display.
+             *
+             * Waited for rather than assumed, and waited for *here* rather than
+             * inside the session: the request travels in the SDP of the ANNOUNCE
+             * that `attach` sends, so a surface that arrives afterwards is a
+             * whole negotiation too late to be offered.
+             *
+             * A timeout rather than an indefinite wait. The presentation may
+             * never be composed at all — the panel can be off, the mode can be
+             * couch, the display can have been unplugged since the setting was
+             * made — and hanging the stream at a black screen waiting for a
+             * window that is not coming is far worse than starting with one
+             * display, which is what every session did before this existed.
+             */
+            val secondSurface = if (quality.secondDisplay) {
+                secondDisplaySurface.await()
+            } else {
+                null
+            }?.takeIf { target ->
+                target.surface.isValid &&
+                    secondDisplaySurface.target.value?.surface === target.surface
+            }
+
+            val secondRequest = secondSurface?.let {
+                SecondDisplayRequest(
+                    // The panel's own pixels, so the host encodes what this
+                    // screen can actually show rather than a mode it has to be
+                    // scaled down from.
+                    width = secondPanelWidth,
+                    height = secondPanelHeight,
+                    fps = quality.secondDisplayFps,
+                    bitrateKbps = quality.secondDisplayBitrateKbps,
+                )
+            }
+
+            /*
              * Off the main thread, because `attach` blocks.
              *
              * RTSP negotiation is several round trips performed inline by the
              * core. On the main thread that is a guaranteed ANR on any host
              * slower than instant.
              */
-            val session = withContext(Dispatchers.IO) { sessions.attach(holder.surface) }
+            val session = withContext(Dispatchers.IO) {
+                sessions.attach(holder.surface, secondSurface?.surface, secondRequest)
+            }
+
+            /*
+             * The host may have declined, in which case the panel goes back to
+             * being a trackpad.
+             *
+             * Read after `attach` because that is when the answer exists: the
+             * capability is advertised in `/serverinfo` but granted or refused
+             * during RTSP, inside the call above.
+             */
+            session?.let { started ->
+                lifecycleScope.launch {
+                    started.secondDisplayActive.collect { active ->
+                        secondDisplaySurface.setActive(active)
+                    }
+                }
+                lifecycleScope.launch {
+                    started.primaryVideoSize.collect(touch::updateVideoSize)
+                }
+                lifecycleScope.launch {
+                    started.secondVideoSize.filterNotNull().collect(secondDisplaySurface::setVideoSize)
+                }
+            }
 
             if (session == null) {
                 // Nothing was prepared — the window outlived its session, which
@@ -392,6 +504,19 @@ class StreamSessionActivity : ComponentActivity() {
         StreamPresence.end()
     }
 
+    override fun onStop() {
+        super.onStop()
+
+        /*
+         * A stream owns windows on both physical panels. If this activity is
+         * genuinely left, keeping the native session alive strands the lower
+         * Presentation above the next app even though the primary window has
+         * gone. A configuration change is the exception: Android is replacing
+         * this instance and its successor will immediately reattach.
+         */
+        if (!isChangingConfigurations && !isFinishing) leave()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
 
@@ -408,12 +533,14 @@ class StreamSessionActivity : ComponentActivity() {
              * steals focus leaves the game accelerating with nobody driving.
              */
             input.releaseAll()
+            touch.releaseAll()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         input.releaseAll()
+        touch.releaseAll()
         sessions.end()
 
         /*
@@ -431,6 +558,7 @@ class StreamSessionActivity : ComponentActivity() {
 
     private fun leave() {
         input.releaseAll()
+        touch.releaseAll()
         sessions.end()
         finish()
     }

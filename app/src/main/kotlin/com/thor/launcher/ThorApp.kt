@@ -2,7 +2,6 @@ package com.thor.launcher
 
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.DisplayMetrics
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -67,6 +66,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import com.thor.core.designsystem.theme.DesignScale
+import com.thor.core.designsystem.theme.COUCH_SHORT_SIDE
 import com.thor.core.designsystem.theme.PANEL_SHORT_SIDE
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.display.DisplayTopology
@@ -77,15 +77,16 @@ import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.MouseController
 import com.thor.core.input.PointerDisplay
-import com.thor.launcher.capture.ProjectedScreen
 import com.thor.launcher.capture.ProjectionConsentActivity
 import com.thor.launcher.capture.RecordingGeometry
 import com.thor.launcher.mouse.PointerHost
 import kotlinx.coroutines.flow.drop
+import com.thor.data.capture.CaptureDisplay
 import com.thor.data.capture.RecordingState
 import com.thor.data.sync.ScrapeState
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.DualScreenMode
+import com.thor.core.model.DisplaySettings
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.LauncherExtension
 import com.thor.core.model.LauncherFeatures
@@ -114,6 +115,9 @@ import com.thor.feature.home.LauncherEffect
 import com.thor.feature.home.AppDrawerScreen
 import com.thor.feature.home.InputSurface
 import com.thor.feature.home.LauncherViewModel
+import com.thor.feature.home.PlayCompass
+import com.thor.feature.home.PlayCompassMode
+import com.thor.feature.home.PlayCompassScreen
 import com.thor.feature.home.dialog.EditEntryDialog
 import com.thor.feature.home.shell.EmptySection
 import com.thor.feature.movies.MoviesBottomPanel
@@ -150,8 +154,11 @@ import com.thor.feature.settings.component.ScrapeMatchDialog
 import com.thor.feature.settings.tutorial.PermissionsScreen
 import com.thor.feature.settings.tutorial.ThorTutorial
 import com.thor.feature.settings.tutorial.TutorialPanel
+import com.thor.feature.settings.tutorial.TutorialPracticeProgress
 import com.thor.feature.settings.tutorial.TutorialScreen
 import com.thor.feature.settings.tutorial.TutorialStep
+import com.thor.feature.settings.tutorial.acceptsPracticeCommand
+import com.thor.feature.settings.tutorial.reducePractice
 import com.thor.feature.settings.tutorial.rememberPermissionItems
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
@@ -167,7 +174,7 @@ import com.thor.feature.topscreen.TopScreen
  * the grid panel beside the reader. A tour that was an overlay could not do that,
  * because it would be the thing occupying the surface it needs to show.
  */
-private enum class Overlay { NONE, SETTINGS, SEARCH, PERMISSIONS, FILES }
+private enum class Overlay { NONE, SETTINGS, SEARCH, PLAY_COMPASS, PERMISSIONS, FILES }
 
 /**
  * The shell's surfaces named as the focus rule names them.
@@ -227,6 +234,10 @@ fun ThorApp(
     val loadedSettings by settingsViewModel.loadedSettings.collectAsState()
     val settings = loadedSettings ?: ThorSettings.DEFAULT
     val settingsLoaded = loadedSettings != null
+    // This is the profile the input router has actually applied, including
+    // custom bindings and its built-in fallback. Tutorial legends must describe
+    // the same controls that will handle the learner's next press.
+    val tutorialControllerProfile by inputRouter.profile.collectAsState()
 
     // Hoisted so controller input can drive the results list; the search screen
     // would otherwise own a separate instance that input could not reach.
@@ -248,6 +259,21 @@ fun ThorApp(
     )
 
     var overlay by remember { mutableStateOf(Overlay.NONE) }
+    var playCompassMode by remember { mutableStateOf(PlayCompassMode.CONTINUE) }
+    var playCompassIndex by remember { mutableIntStateOf(0) }
+    val playCompassPicks = remember(state.entriesById, playCompassMode) {
+        PlayCompass.recommend(
+            entries = state.entriesById.values.filterIsInstance<GameEntry>(),
+            mode = playCompassMode,
+        )
+    }
+    val currentPlayCompassPicks by rememberUpdatedState(playCompassPicks)
+    LaunchedEffect(playCompassMode, playCompassPicks.size) {
+        playCompassIndex = playCompassIndex.coerceIn(
+            0,
+            (playCompassPicks.size - 1).coerceAtLeast(0),
+        )
+    }
 
     // Reported upward by the settings screen so controller navigation can be
     // clamped to the rows the current pane actually rendered.
@@ -266,6 +292,8 @@ fun ThorApp(
     var tutorialSteps by remember { mutableStateOf(emptyList<TutorialStep>()) }
     var tutorialIndex by remember { mutableIntStateOf(0) }
     var tutorialExtension by remember { mutableStateOf<LauncherExtension?>(null) }
+    var tutorialPractice by remember { mutableStateOf(TutorialPracticeProgress()) }
+    var tutorialExitArmed by remember { mutableStateOf(false) }
 
     /*
      * A function, not a value, because the input collector reads it.
@@ -701,6 +729,13 @@ fun ThorApp(
         !gridInActivityWindowNow() || !appOnSecondaryPanelNow()
     }
 
+    /** One window is carrying both the grid and the information-panel overlays. */
+    val tutorialHostedByInfoOverlaysNow: () -> Boolean = {
+        mode == DualScreenMode.COUCH ||
+            mode == DualScreenMode.SINGLE ||
+            (mode == DualScreenMode.DUAL_DISPLAY && !infoWindowFreeNow())
+    }
+
     /**
      * Where the launcher's overlays are actually drawn.
      *
@@ -1031,6 +1066,8 @@ fun ThorApp(
                 overlay = Overlay.NONE
                 tutorialExtension = extension
                 tutorialIndex = 0
+                tutorialPractice = TutorialPracticeProgress()
+                tutorialExitArmed = false
                 tutorialSteps = steps
             }
 
@@ -1080,16 +1117,18 @@ fun ThorApp(
          * Confirm — so the two paths have to agree about what "next" means and
          * about which flag gets written when there is no next.
          */
-        val advanceTutorial: () -> Unit = advance@{
-            if (tutorialIndex < tutorialSteps.lastIndex) {
-                tutorialIndex++
-                feedback.play(FeedbackCue.NAVIGATE)
-                return@advance
-            }
+        val moveTutorialTo: (Int) -> Unit = { requestedIndex ->
+            tutorialIndex = requestedIndex.coerceIn(0, tutorialSteps.lastIndex.coerceAtLeast(0))
+            tutorialPractice = TutorialPracticeProgress()
+            tutorialExitArmed = false
+        }
 
+        val finishTutorial: () -> Unit = {
             val finished = tutorialExtension
             tutorialSteps = emptyList()
             tutorialExtension = null
+            tutorialPractice = TutorialPracticeProgress()
+            tutorialExitArmed = false
             // Leaves the launcher as it found it: a tour that ended on a settings
             // step must not leave that screen open behind the card it removed.
             overlay = Overlay.NONE
@@ -1099,6 +1138,51 @@ fun ThorApp(
                 settingsViewModel.completeExtensionTour(finished)
             }
             feedback.play(FeedbackCue.SUCCESS)
+        }
+
+        /*
+         * Leaving is intentionally a two-press action. Finishing writes the
+         * "seen" flag, so a stray Back on lesson one must not silently suppress
+         * first-run help forever. The first press only arms the clearly labelled
+         * confirmation; moving to another lesson disarms it.
+         */
+        val requestTutorialExit: () -> Unit = {
+            if (tutorialExitArmed) {
+                finishTutorial()
+            } else {
+                tutorialExitArmed = true
+                feedback.play(FeedbackCue.NAVIGATE)
+            }
+        }
+
+        val advanceTutorial: () -> Unit = advance@{
+            val current = tutorialSteps.getOrNull(tutorialIndex) ?: return@advance
+            if (!tutorialPractice.isComplete(current.practice)) {
+                feedback.play(FeedbackCue.REJECT)
+                return@advance
+            }
+            if (tutorialIndex < tutorialSteps.lastIndex) {
+                moveTutorialTo(tutorialIndex + 1)
+                feedback.play(FeedbackCue.NAVIGATE)
+                return@advance
+            }
+            finishTutorial()
+        }
+
+        val practiceTutorialCommand: (ControllerCommand) -> Boolean = { command ->
+            val current = tutorialSteps.getOrNull(tutorialIndex)
+            if (current == null || !current.acceptsPracticeCommand(tutorialPractice, command)) {
+                false
+            } else {
+                val wasComplete = tutorialPractice.isComplete(current.practice)
+                tutorialPractice = current.reducePractice(tutorialPractice, command)
+                val nowComplete = tutorialPractice.isComplete(current.practice)
+                feedback.play(
+                    if (!wasComplete && nowComplete) FeedbackCue.SUCCESS
+                    else FeedbackCue.NAVIGATE,
+                )
+                true
+            }
         }
 
         /*
@@ -1201,15 +1285,38 @@ fun ThorApp(
                  * off, and a press reaching the settings routing below would drive
                  * that screen instead of the tour that put it there.
                  *
-                 * Being outermost also makes "cannot be skipped" true rather than
-                 * merely intended: there is no surface, section or panel that can
-                 * take a press before this does, so no button leaves early.
+                 * Being outermost also makes practice safe: no surface, section or
+                 * panel can take a press before the simulated lesson does. The tour
+                 * still offers an explicit Exit action and Back exits from lesson one.
                  */
                 if (tutorialRunningNow()) {
+                    val current = tutorialSteps.getOrNull(tutorialIndex)
+                    val practicing = current?.practice != null &&
+                        !tutorialPractice.isComplete(current.practice)
+
+                    if (practicing) {
+                        if (practiceTutorialCommand(event.command)) return@collect
+
+                        if (event.command == ControllerCommand.BACK) {
+                            if (tutorialIndex > 0) {
+                                moveTutorialTo(tutorialIndex - 1)
+                                feedback.play(FeedbackCue.BACK)
+                            } else {
+                                requestTutorialExit()
+                            }
+                        } else {
+                            feedback.play(FeedbackCue.REJECT)
+                        }
+                        return@collect
+                    }
+
                     when (event.command) {
-                        ControllerCommand.CONFIRM,
-                        ControllerCommand.NAVIGATE_RIGHT,
-                        -> advanceTutorial()
+                        ControllerCommand.CONFIRM -> advanceTutorial()
+
+                        ControllerCommand.NAVIGATE_RIGHT -> {
+                            if (current?.practice == null) advanceTutorial()
+                            else feedback.play(FeedbackCue.REJECT)
+                        }
 
                         /*
                          * Back steps once and stops at the first.
@@ -1222,10 +1329,10 @@ fun ThorApp(
                         ControllerCommand.NAVIGATE_LEFT,
                         -> {
                             if (tutorialIndex > 0) {
-                                tutorialIndex--
+                                moveTutorialTo(tutorialIndex - 1)
                                 feedback.play(FeedbackCue.BACK)
                             } else {
-                                feedback.play(FeedbackCue.REJECT)
+                                requestTutorialExit()
                             }
                         }
 
@@ -1435,6 +1542,50 @@ fun ThorApp(
                     /** Never reached either; see the branch above the keyboard's. */
                     Overlay.FILES -> Unit
 
+                    Overlay.PLAY_COMPASS -> {
+                        when (event.command) {
+                            ControllerCommand.BACK -> {
+                                overlay = Overlay.NONE
+                                feedback.play(FeedbackCue.BACK)
+                            }
+
+                            ControllerCommand.NAVIGATE_UP,
+                            ControllerCommand.NAVIGATE_DOWN,
+                            -> {
+                                val delta = if (event.command == ControllerCommand.NAVIGATE_UP) -1 else 1
+                                val modes = PlayCompassMode.entries
+                                playCompassMode = modes[
+                                    (playCompassMode.ordinal + delta).coerceIn(0, modes.lastIndex)
+                                ]
+                                playCompassIndex = 0
+                                feedback.play(FeedbackCue.NAVIGATE)
+                            }
+
+                            ControllerCommand.NAVIGATE_LEFT,
+                            ControllerCommand.NAVIGATE_RIGHT,
+                            -> {
+                                val last = currentPlayCompassPicks.lastIndex
+                                if (last >= 0) {
+                                    val delta = if (event.command == ControllerCommand.NAVIGATE_LEFT) -1 else 1
+                                    playCompassIndex = (playCompassIndex + delta).coerceIn(0, last)
+                                    feedback.play(FeedbackCue.NAVIGATE)
+                                } else {
+                                    feedback.play(FeedbackCue.REJECT)
+                                }
+                            }
+
+                            ControllerCommand.CONFIRM -> {
+                                currentPlayCompassPicks.getOrNull(playCompassIndex)?.game?.let { game ->
+                                    overlay = Overlay.NONE
+                                    viewModel.launchEntry(game)
+                                    feedback.play(FeedbackCue.LAUNCH)
+                                } ?: feedback.play(FeedbackCue.REJECT)
+                            }
+
+                            else -> Unit
+                        }
+                    }
+
                     Overlay.SETTINGS -> {
                         if (couchModeNow.value && (
                                 event.command == ControllerCommand.CYCLE_IMAGE_PREVIOUS ||
@@ -1606,8 +1757,14 @@ fun ThorApp(
                             ),
                         )
                     }
-                    viewModel.finishIntro()
                 } finally {
+                    /*
+                     * Cancellation is a completed attempt too. A configuration or
+                     * display change can dispose this effect while the activity and
+                     * its view model survive; leaving the flag raised would restart
+                     * the whole boot sequence when the composition returns.
+                     */
+                    viewModel.finishIntro()
                     openingSound.cancel()
                     // ui_boot is 1.5 seconds long, and must not be left playing
                     // over the launcher once the overlay has gone.
@@ -1975,6 +2132,13 @@ fun ThorApp(
                         feedback.play(FeedbackCue.DRAWER_OPEN)
                     }
 
+                    LauncherEffect.OpenPlayCompass -> {
+                        playCompassMode = PlayCompassMode.CONTINUE
+                        playCompassIndex = 0
+                        overlay = Overlay.PLAY_COMPASS
+                        feedback.play(FeedbackCue.DRAWER_OPEN)
+                    }
+
                     // The same route the pointer's power action takes: no public
                     // intent opens this dialog, only the accessibility service.
                     LauncherEffect.RequestPowerMenu -> mouse.requestPowerMenu()
@@ -2200,7 +2364,18 @@ fun ThorApp(
              * would be the one part of the launcher that still changed size with
              * the Smallest Width setting.
              */
-            DesignScale(referenceShortSide = PANEL_SHORT_SIDE) {
+            DesignScale(
+                referenceShortSide = if (mode == DualScreenMode.COUCH) {
+                    COUCH_SHORT_SIDE
+                } else {
+                    PANEL_SHORT_SIDE
+                },
+                userScale = if (mode == DualScreenMode.COUCH) {
+                    DisplaySettings.couchDensityScale(settings.display.couchUiScale)
+                } else {
+                    1f
+                },
+            ) {
 
                 /*
                  * The entry editor belongs to this surface, not to the grid's.
@@ -2247,6 +2422,22 @@ fun ThorApp(
                             },
                             onDismiss = { overlay = Overlay.NONE },
                             viewModel = searchViewModel,
+                        )
+
+                        Overlay.PLAY_COMPASS -> PlayCompassScreen(
+                            picks = playCompassPicks,
+                            mode = playCompassMode,
+                            focusedIndex = playCompassIndex,
+                            onModeSelected = { mode ->
+                                playCompassMode = mode
+                                playCompassIndex = 0
+                            },
+                            onPickSelected = { index -> playCompassIndex = index },
+                            onLaunch = { game ->
+                                overlay = Overlay.NONE
+                                viewModel.launchEntry(game)
+                            },
+                            onDismiss = { overlay = Overlay.NONE },
                         )
 
                         // Drawn on the grid panel instead; see `bottomContent`. This
@@ -2296,12 +2487,30 @@ fun ThorApp(
                  * category has Settings underneath it here and its card on the other
                  * screen; a step about this panel itself has its card here.
                  */
+                /*
+                 * Usually this is the information panel's own window. In single
+                 * window modes — and when an app has occupied that window — these
+                 * overlays are raised over the grid instead. The tutorial card has
+                 * to move with them too: leaving this as INFO put a transparent,
+                 * input-consuming tutorial layer over GRID lessons and put Settings
+                 * over the card on category lessons.
+                 */
+                val tutorialPanelHere = if (tutorialHostedByInfoOverlaysNow()) {
+                    tutorialStep?.panel ?: TutorialPanel.INFO
+                } else {
+                    TutorialPanel.INFO
+                }
                 TutorialScreen(
                     steps = tutorialSteps,
                     index = tutorialIndex,
-                    panel = TutorialPanel.INFO,
-                    onBack = { if (tutorialIndex > 0) tutorialIndex-- },
+                    panel = tutorialPanelHere,
+                    progress = tutorialPractice,
+                    controllerProfile = tutorialControllerProfile,
+                    exitArmed = tutorialExitArmed,
+                    onBack = { if (tutorialIndex > 0) moveTutorialTo(tutorialIndex - 1) },
                     onNext = advanceTutorial,
+                    onExit = requestTutorialExit,
+                    onPracticeCommand = { command -> practiceTutorialCommand(command) },
                 )
 
             /*
@@ -2847,13 +3056,42 @@ fun ThorApp(
              * Ordering matters here as it does below: this is a `Box`, and a `Box`
              * draws its children in the order they are declared.
              */
-            TutorialScreen(
-                steps = tutorialSteps,
-                index = tutorialIndex,
-                panel = TutorialPanel.GRID,
-                onBack = { if (tutorialIndex > 0) tutorialIndex-- },
-                onNext = advanceTutorial,
-            )
+            // In a shared window `infoOverlays` is composed above this surface
+            // and hosts the one adaptive tutorial card. Skipping this obscured
+            // duplicate avoids duplicate accessibility semantics and animation.
+            if (!tutorialHostedByInfoOverlaysNow()) {
+                /*
+                 * BottomScreen scales its own subtree, while the walkthrough is
+                 * deliberately a sibling so it can stay modal above keyboards and
+                 * panels. Give that sibling the same canvas or it renders 20-30%
+                 * larger than everything it is pointing at on the Thor displays.
+                 */
+                DesignScale(
+                    referenceShortSide = if (mode == DualScreenMode.COUCH) {
+                        COUCH_SHORT_SIDE
+                    } else {
+                        PANEL_SHORT_SIDE
+                    },
+                    userScale = if (mode == DualScreenMode.COUCH) {
+                        DisplaySettings.couchDensityScale(settings.display.couchUiScale)
+                    } else {
+                        1f
+                    },
+                ) {
+                    TutorialScreen(
+                        steps = tutorialSteps,
+                        index = tutorialIndex,
+                        panel = TutorialPanel.GRID,
+                        progress = tutorialPractice,
+                        controllerProfile = tutorialControllerProfile,
+                        exitArmed = tutorialExitArmed,
+                        onBack = { if (tutorialIndex > 0) moveTutorialTo(tutorialIndex - 1) },
+                        onNext = advanceTutorial,
+                        onExit = requestTutorialExit,
+                        onPracticeCommand = { command -> practiceTutorialCommand(command) },
+                    )
+                }
+            }
 
             /*
              * The permission list, on the panel being held.
@@ -2980,10 +3218,21 @@ fun ThorApp(
             )
             // And to the service, which starts recordings this composition will not
             // be alive to answer for.
-            recordingGeometry.setLauncherFrame(
-                width = frame.width,
-                height = frame.height,
-                densityDpi = top.densityDpi,
+            recordingGeometry.setLauncherPanels(
+                top = CaptureDisplay(
+                    displayId = top.displayId,
+                    width = top.widthPx,
+                    height = top.heightPx,
+                    densityDpi = top.densityDpi,
+                ),
+                bottom = secondary?.let { panel ->
+                    CaptureDisplay(
+                        displayId = panel.displayId,
+                        width = panel.widthPx,
+                        height = panel.heightPx,
+                        densityDpi = panel.densityDpi,
+                    )
+                },
             )
         }
 
@@ -3117,13 +3366,12 @@ fun ThorApp(
             onHoverFeedback = { feedback.play(FeedbackCue.NAVIGATE) },
         ) {
         /*
-         * The recording's own display, whatever the screen mode is.
+         * The launcher-only recording's private display.
          *
          * A third window, on a display the launcher created for itself, whose output
-         * is the video encoder's input surface. It renders the same two surfaces the
-         * panels do — from the same state, so it cannot drift — one above the other
-         * at full size. Nothing is captured from the screens; they are simply drawn
-         * again somewhere that happens to be a file.
+         * is the video encoder's input surface. Physical-screen recordings have a
+         * null display id and never enter this branch; their service-owned GL
+         * compositor must keep working after this entire composition is destroyed.
          *
          * Outside the `when` below, which is where it used to live — inside the
          * dual-display arm, so starting a recording in any other mode produced a
@@ -3131,9 +3379,9 @@ fun ThorApp(
          * What the panels are *doing* is the same in every mode; only where they are
          * drawn differs, and this draws them somewhere else regardless.
          */
-        (recording as? RecordingState.Active)?.let { active ->
+        (recording as? RecordingState.Active)?.displayId?.let { recordingDisplayId ->
             SecondaryDisplay(
-                displayId = active.displayId,
+                displayId = recordingDisplayId,
                 enabled = { true },
                 takesFocus = { false },
             ) {
@@ -3157,13 +3405,8 @@ fun ThorApp(
                         topWidthDp = primaryPanel?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
                         bottomWidthDp = recordedBottom?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
                         /*
-                         * The lid shows whichever screen is being recorded.
-                         *
-                         * A launcher recording puts the launcher's own top panel
-                         * there. A screen recording puts a live mirror of the real
-                         * display there instead — so a game is recorded with the
-                         * launcher's own panel below it, rather than as a bare
-                         * rectangle of one screen.
+                         * The lid shows the launcher's own top panel. Recording apps
+                         * on physical displays is handled outside Compose now.
                          *
                          * Couch mode is the exception, and it was recorded upside
                          * down. Its whole interface is composed into the *grid*
@@ -3172,17 +3415,7 @@ fun ThorApp(
                          * information panel black above it. On the device that
                          * layout is on top, so that is where it is recorded.
                          */
-                        topPanel = active.mirrored?.let { projection ->
-                            {
-                                ProjectedScreen(
-                                    projection = projection,
-                                    width = primaryPanel?.widthPx ?: DEFAULT_MIRROR_WIDTH,
-                                    height = primaryPanel?.heightPx ?: DEFAULT_MIRROR_HEIGHT,
-                                    densityDpi = primaryPanel?.densityDpi
-                                        ?: DisplayMetrics.DENSITY_DEFAULT,
-                                )
-                            }
-                        } ?: if (mode == DualScreenMode.COUCH) {
+                        topPanel = if (mode == DualScreenMode.COUCH) {
                             { bottomContent(Modifier.fillMaxSize()) }
                         } else {
                             topContent

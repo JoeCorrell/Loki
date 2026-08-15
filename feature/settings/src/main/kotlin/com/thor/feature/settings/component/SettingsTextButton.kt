@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -53,13 +53,16 @@ fun SettingsTextButton(
     val shape = ThorTheme.shapes.pill
     val hover = rememberPointerHover()
     val highlighted = focused || (reactToHover && hover.isHovered)
-    val actualContainer = containerColor ?: colors.surfaceHighest
+    val actualContainer = containerColor ?: colors.control.copy(alpha = 0.13f)
     val actualContent = contentColor ?: colors.onSurface
-    val actualBorder = borderColor ?: colors.outline.copy(alpha = 0.34f)
+    val actualBorder = borderColor ?: colors.control.copy(alpha = 0.38f)
 
     Row(
         modifier = modifier
-            .height(SETTINGS_BUTTON_HEIGHT.dp)
+            // A fixed height clips the label when Android or Loki's large-text
+            // setting is enabled. Keep the normal 36dp rhythm as a minimum and
+            // let the control grow only when its content actually needs it.
+            .heightIn(min = SETTINGS_BUTTON_HEIGHT.dp)
             .widthIn(min = SETTINGS_BUTTON_MIN_WIDTH.dp)
             .let { button -> if (reactToHover) button.pointerHover(hover) else button }
             .clip(shape)

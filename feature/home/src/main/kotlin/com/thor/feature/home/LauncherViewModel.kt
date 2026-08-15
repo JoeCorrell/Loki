@@ -46,7 +46,7 @@ import com.thor.core.model.SortOrder
 import com.thor.core.model.ThorKeyboardLayout
 import com.thor.data.capture.RecordingState
 import com.thor.data.capture.ScreenRecorder
-import com.thor.data.clipboard.ThorClipboard
+import com.thor.core.common.clipboard.ThorClipboard
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.launcher.LaunchFailure
 import com.thor.data.launcher.LaunchResult
@@ -136,6 +136,7 @@ class LauncherViewModel @Inject constructor(
     private val achievementRepository: AchievementRepository,
     private val journalRepository: GameJournalRepository,
     private val screenshots: ScreenshotBridge,
+    private val introGate: LauncherIntroGate,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -768,6 +769,14 @@ class LauncherViewModel @Inject constructor(
             toggleRecording()
             return
         }
+        if (entryLauncher.hasSecondaryDisplay() && !screenshots.available.value) {
+            emit(
+                LauncherEffect.ShowMessage(
+                    "Turn on Loki's accessibility service to record both screens",
+                ),
+            )
+            return
+        }
         emit(LauncherEffect.StartScreenRecording)
     }
 
@@ -787,7 +796,8 @@ class LauncherViewModel @Inject constructor(
      */
     override fun onCleared() {
         super.onCleared()
-        if (screenRecorder.isRecording) {
+        val active = screenRecorder.state.value as? RecordingState.Active
+        if (active != null && !active.capturesDevice) {
             ThorLog.w(TAG, "Launcher went away mid-recording; closing the file")
             screenRecorder.stop()
         }
@@ -798,18 +808,17 @@ class LauncherViewModel @Inject constructor(
     /**
      * Whether the start-up sequence is still running.
      *
-     * Scoped to the process, and that is the whole specification: it survives a
-     * rotation or a display change, and dies when the process does. So the intro
-     * plays when the device is turned on, when the launcher is force stopped and
-     * reopened, and when Android kills it to make room for a game — and does not
-     * play for a Home press against a launcher that is still running.
+     * Claimed from [introGate], whose singleton lifetime is the whole
+     * specification: it survives an activity/view-model replacement and dies when
+     * the process does. So the intro plays when the launcher process starts — and
+     * does not play merely because Android rebuilt its activity for a Home press.
      *
      * It was briefly stored instead, which made it play exactly once per install.
      * That is a different thing and not the one wanted: the sequence is the
      * launcher starting up, so it belongs to a start-up rather than to a
      * first run.
      */
-    private val _introVisible = MutableStateFlow(true)
+    private val _introVisible = MutableStateFlow(introGate.claim())
     val introVisible: StateFlow<Boolean> = _introVisible.asStateFlow()
 
     fun finishIntro() {
@@ -1158,6 +1167,7 @@ class LauncherViewModel @Inject constructor(
         when (action) {
             ShortcutAction.APPS -> openAppDrawer()
             ShortcutAction.SEARCH -> emit(LauncherEffect.OpenSearch)
+            ShortcutAction.PLAY_COMPASS -> emit(LauncherEffect.OpenPlayCompass)
             ShortcutAction.THOR_SETTINGS -> emit(LauncherEffect.OpenSettings)
             ShortcutAction.SCAN_LIBRARY -> scanLibrary()
             ShortcutAction.RECORD -> toggleRecording()

@@ -5,13 +5,13 @@ import kotlinx.serialization.Serializable
 /**
  * The bundled themes.
  *
- * Twelve of them, four to a [ThemeFamily], and every one available light or dark —
- * which is the change that made twelve enough. The set used to be fifteen because
+ * Twenty-three of them across five [ThemeFamily] shelves, every one available light
+ * or dark. The set used to split light and dark into separate identities because
  * light and dark were different *themes*: five lights that were nobody's first
  * choice of colour, and ten darks among which the differences were often a single
  * accent. Brightness is a preference, not an identity, so it moved to
- * [PersonalizationSettings.themeMode] and the gallery went back to being twelve
- * distinct answers to "what colour is this launcher".
+ * [PersonalizationSettings.themeMode] and the gallery went back to being distinct
+ * answers to "what colour is this launcher".
  *
  * A theme is a [ThemeRecipe] — a seed and a material character — not a table of
  * hex values. See [ThemeRecipe] for why.
@@ -52,6 +52,14 @@ enum class ThemeId(val displayName: String) {
     // ---- Editor --------------------------------------------------------
     ONE_DARK("One Dark"),
     PALENIGHT("Palenight"),
+
+    // Appended to preserve the serialized names and historical ordering above.
+    NEON_CIRCUIT("Neon Circuit"),
+    SUNSET_DRIVE("Sunset Drive"),
+    OCEAN_GLASS("Ocean Glass"),
+    ROYAL_ARCADE("Royal Arcade"),
+    FOREST_BLOOM("Forest Bloom"),
+    PAPER_POP("Paper Pop"),
 }
 
 /**
@@ -379,6 +387,13 @@ data class ThemeRecipe(
      * competing with the accent for the same job.
      */
     val neutralChroma: Float = 0.018f,
+    /** Optional semantic colour directions. Null keeps the original generated relationship. */
+    val backgroundHue: Float? = null,
+    val panelHue: Float? = null,
+    val controlHue: Float? = null,
+    val selectionHue: Float? = null,
+    val textHue: Float? = null,
+    val contentHue: Float? = null,
     /**
      * How far this theme lifts its ground off the extreme the contrast level picked.
      *
@@ -436,9 +451,19 @@ data class ThemeRecipe(
         val override = options.accentOverrideArgb?.let { Oklch.fromArgb(it) }
         val hue = (override?.h ?: (accentHue + options.hueShift)).mod(360f)
         val chroma = (override?.c?.coerceAtLeast(MIN_OVERRIDE_CHROMA) ?: accentChroma) * intensity
-        // An overridden accent drags the greys with it. Leaving them tinted toward
-        // the hue that was replaced is what made a custom accent look bolted on.
-        val greyHue = if (override != null) hue else (neutralHue + options.hueShift).mod(360f)
+        // Move the entire palette by the same angle when the global accent is
+        // overridden. This preserves a custom theme's relationships instead of
+        // replacing one swatch and leaving its complementary roles behind.
+        val paletteShift = override?.let { (it.h - accentHue).mod(360f) } ?: options.hueShift
+        fun semanticHue(explicit: Float?, fallback: Float): Float =
+            ((explicit ?: fallback) + paletteShift).mod(360f)
+
+        val backgroundRoleHue = semanticHue(backgroundHue, neutralHue)
+        val panelRoleHue = semanticHue(panelHue, neutralHue)
+        val controlRoleHue = semanticHue(controlHue, accentHue)
+        val selectionRoleHue = semanticHue(selectionHue, accentHue + cursorHueShift)
+        val textRoleHue = semanticHue(textHue, neutralHue)
+        val contentRoleHue = semanticHue(contentHue, accentHue + secondaryHueShift)
         val greyChroma = neutralChroma * intensity
 
         val ramp = surfaceRamp(
@@ -449,7 +474,11 @@ data class ThemeRecipe(
         )
         val taper = if (dark) DARK_TINT_TAPER else LIGHT_TINT_TAPER
         val surfaces = ramp.mapIndexed { level, lightness ->
-            Oklch(lightness, greyChroma * taper[level], greyHue)
+            Oklch(
+                lightness,
+                greyChroma * taper[level],
+                if (level == 0) backgroundRoleHue else panelRoleHue,
+            )
         }
         val background = surfaces[0]
         val panel = surfaces[1]
@@ -460,7 +489,14 @@ data class ThemeRecipe(
             LIGHT_ACCENT_LIGHTNESS - contrast.accentPush
         }.coerceIn(0.2f, 0.95f)
         val accent = Oklch(accentLightness, chroma, hue)
-        val cursor = accent.rotate(cursorHueShift)
+        val control = Oklch(accentLightness, chroma * 0.9f, controlRoleHue)
+        val selection = Oklch(accentLightness, chroma, selectionRoleHue)
+        val contentAccent = Oklch(
+            accentLightness,
+            maxOf(chroma * 0.82f, tintChroma * intensity * 0.72f),
+            contentRoleHue,
+        )
+        val cursor = selection
 
         // Text chroma is capped well below the greys': a tint that reads as warmth
         // on a large panel reads as a printing fault on a glyph stroke.
@@ -479,16 +515,21 @@ data class ThemeRecipe(
                 .lighten(if (dark) ACCENT_END_LIFT else -ACCENT_END_LIFT * 0.5f)
                 .saturate(0.95f)
                 .toArgb(),
+            controlArgb = control.toArgb(),
+            onControlArgb = contrastingExtremeOn(control.toArgb()),
+            selectionArgb = selection.toArgb(),
+            onSelectionArgb = contrastingExtremeOn(selection.toArgb()),
+            contentAccentArgb = contentAccent.toArgb(),
             backgroundArgb = background.toArgb(),
             surfaceArgb = panel.toArgb(),
             surfaceElevatedArgb = surfaces[2].toArgb(),
             surfaceHighestArgb = surfaces[3].toArgb(),
             onBackgroundArgb =
-                readableOn(background, dark, greyHue, textChroma, contrast.bodyRatio).toArgb(),
+                readableOn(background, dark, textRoleHue, textChroma, contrast.bodyRatio).toArgb(),
             onSurfaceArgb =
-                readableOn(panel, dark, greyHue, textChroma, contrast.bodyRatio).toArgb(),
+                readableOn(panel, dark, textRoleHue, textChroma, contrast.bodyRatio).toArgb(),
             onSurfaceVariantArgb =
-                readableOn(panel, dark, greyHue, textChroma, contrast.mutedRatio).toArgb(),
+                readableOn(panel, dark, textRoleHue, textChroma, contrast.mutedRatio).toArgb(),
             cursorArgb = cursor.toArgb(),
             glowArgb = cursor.toArgb(alpha = if (dark) DARK_GLOW_ALPHA else LIGHT_GLOW_ALPHA),
             outlineArgb = Oklch(
@@ -502,7 +543,7 @@ data class ThemeRecipe(
                     surfaces[3].l - LIGHT_OUTLINE_STEP
                 },
                 c = greyChroma * 0.9f,
-                h = greyHue,
+                h = panelRoleHue,
             ).toArgb(),
             errorArgb = Oklch(
                 l = if (dark) DARK_ERROR_LIGHTNESS else LIGHT_ERROR_LIGHTNESS,
@@ -535,7 +576,7 @@ data class ThemeRecipe(
             },
             tintsArgb = resolveTints(
                 accentHue = hue,
-                greyHue = greyHue,
+                greyHue = panelRoleHue,
                 greyChroma = greyChroma,
                 intensity = intensity,
                 dark = dark,
@@ -864,6 +905,111 @@ data class ThemeRecipe(
                 motion = MotionStyle.FLUID,
                 defaultWallpaper = AnimatedWallpaper.BOKEH,
             ),
+            // The semantic collection: these do not merely rotate one accent.
+            // Background, panels, controls, selection, content and text each
+            // receive a deliberate, coordinated direction on the colour wheel.
+            ThemeRecipe(
+                id = ThemeId.NEON_CIRCUIT, family = ThemeFamily.MULTI,
+                accentHue = 198f, accentChroma = 0.178f,
+                harmony = ThemeHarmony.TETRADIC, tintChroma = 0.17f,
+                neutralHue = 278f, neutralChroma = 0.031f,
+                backgroundHue = 266f, panelHue = 292f,
+                controlHue = 198f, selectionHue = 332f,
+                textHue = 258f, contentHue = 118f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.32f),
+                    cornerRadiusDp = 12, surfaceAlpha = 0.88f, blurRadiusDp = 24,
+                    grain = 0.065f, backgroundDepth = 0.21f,
+                ),
+                motion = MotionStyle.SNAPPY,
+                defaultWallpaper = AnimatedWallpaper.PARTICLES,
+            ),
+            ThemeRecipe(
+                id = ThemeId.SUNSET_DRIVE, family = ThemeFamily.MULTI,
+                accentHue = 28f, accentChroma = 0.175f,
+                harmony = ThemeHarmony.TRIADIC, tintChroma = 0.17f,
+                neutralHue = 326f, neutralChroma = 0.03f,
+                backgroundHue = 304f, panelHue = 332f,
+                controlHue = 28f, selectionHue = 198f,
+                textHue = 318f, contentHue = 84f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.26f),
+                    cornerRadiusDp = 24, surfaceAlpha = 0.89f, blurRadiusDp = 28,
+                    grain = 0.045f, backgroundDepth = 0.2f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.WAVES,
+            ),
+            ThemeRecipe(
+                id = ThemeId.OCEAN_GLASS, family = ThemeFamily.MULTI,
+                accentHue = 190f, accentChroma = 0.15f,
+                harmony = ThemeHarmony.SPLIT, tintChroma = 0.155f,
+                neutralHue = 228f, neutralChroma = 0.028f,
+                backgroundHue = 252f, panelHue = 218f,
+                controlHue = 186f, selectionHue = 42f,
+                textHue = 230f, contentHue = 148f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.3f),
+                    cornerRadiusDp = 26, surfaceAlpha = 0.86f, blurRadiusDp = 30,
+                    grain = 0.025f, backgroundDepth = 0.18f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.AURORA,
+            ),
+            ThemeRecipe(
+                id = ThemeId.ROYAL_ARCADE, family = ThemeFamily.MULTI,
+                accentHue = 82f, accentChroma = 0.16f,
+                harmony = ThemeHarmony.TETRADIC, tintChroma = 0.165f,
+                neutralHue = 278f, neutralChroma = 0.03f,
+                backgroundHue = 258f, panelHue = 292f,
+                controlHue = 82f, selectionHue = 205f,
+                textHue = 270f, contentHue = 344f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.RAISED.copy(
+                        shadowElevationDp = 9,
+                        borderAlpha = 0.48f,
+                    ),
+                    cornerRadiusDp = 16, surfaceAlpha = 0.96f, blurRadiusDp = 12,
+                    grain = 0.055f, backgroundDepth = 0.13f,
+                ),
+                motion = MotionStyle.MECHANICAL,
+                defaultWallpaper = AnimatedWallpaper.STARFIELD,
+            ),
+            ThemeRecipe(
+                id = ThemeId.FOREST_BLOOM, family = ThemeFamily.MULTI,
+                accentHue = 145f, accentChroma = 0.145f,
+                harmony = ThemeHarmony.SPLIT, tintChroma = 0.15f,
+                neutralHue = 154f, neutralChroma = 0.029f,
+                backgroundHue = 122f, panelHue = 166f,
+                controlHue = 66f, selectionHue = 334f,
+                textHue = 150f, contentHue = 194f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.1f),
+                    cornerRadiusDp = 20, surfaceAlpha = 0.94f, blurRadiusDp = 18,
+                    grain = 0.075f, backgroundDepth = 0.12f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.BOKEH,
+            ),
+            ThemeRecipe(
+                id = ThemeId.PAPER_POP, family = ThemeFamily.MULTI,
+                accentHue = 28f, accentChroma = 0.17f,
+                harmony = ThemeHarmony.TRIADIC, tintChroma = 0.17f,
+                neutralHue = 78f, neutralChroma = 0.025f,
+                backgroundHue = 82f, panelHue = 108f,
+                controlHue = 246f, selectionHue = 28f,
+                textHue = 266f, contentHue = 88f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.FLAT.copy(
+                        borderWidthDp = 1.5f,
+                        borderAlpha = 0.72f,
+                    ),
+                    cornerRadiusDp = 8, surfaceAlpha = 0.98f, blurRadiusDp = 0,
+                    grain = 0.09f, backgroundDepth = 0.04f,
+                ),
+                motion = MotionStyle.SNAPPY,
+                defaultWallpaper = AnimatedWallpaper.NONE,
+            ),
 
             // ---- Editor ----------------------------------------------------
             /*
@@ -1057,6 +1203,14 @@ data class ThemeSpec(
      * accent is the main reason a palette looks cheap.
      */
     val accentEndArgb: Long,
+    /** Filled controls and their guaranteed-readable foreground. */
+    val controlArgb: Long,
+    val onControlArgb: Long,
+    /** Focused/selected surfaces, separate from buttons and decorative accents. */
+    val selectionArgb: Long,
+    val onSelectionArgb: Long,
+    /** Artwork badges, progress, metadata accents, and other content decoration. */
+    val contentAccentArgb: Long,
     val backgroundArgb: Long,
     /** Base surface for panels and sheets. */
     val surfaceArgb: Long,
@@ -1095,6 +1249,20 @@ data class ThemeSpec(
 
     /** The colour this theme paints [slot] with, falling back to the accent. */
     fun tint(slot: AccentSlot): Long = tintsArgb.getOrElse(slot.ordinal) { primaryArgb }
+}
+
+/** Picks the readable extreme for a saturated filled semantic role. */
+private fun contrastingExtremeOn(backgroundArgb: Long): Long {
+    val white = 0xFFFFFFFFL
+    val black = 0xFF000000L
+    return if (
+        Oklch.contrastRatio(white, backgroundArgb) >=
+        Oklch.contrastRatio(black, backgroundArgb)
+    ) {
+        white
+    } else {
+        black
+    }
 }
 
 /**
@@ -1438,4 +1606,3 @@ enum class MotionStyle(val label: String, val durationScale: Float) {
     /** Stepped, slightly stiff. */
     MECHANICAL("Mechanical", 0.9f),
 }
-

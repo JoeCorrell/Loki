@@ -25,7 +25,7 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.HostStatus
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
-import com.thor.data.stream.LaunchStage
+import com.thor.core.streaming.LaunchStage
 
 /**
  * One word per button, wherever one word will do.

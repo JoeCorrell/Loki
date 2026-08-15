@@ -1,7 +1,9 @@
 #include "Limelight-internal.h"
+#include "SecondStream.h"
 
 // This is a private header, but it just contains some time macros
 #include <enet/time.h>
+#include <stdatomic.h>
 
 // NV control stream packet header for TCP
 typedef struct _NVCTL_TCP_PACKET_HEADER {
@@ -77,6 +79,7 @@ static PLT_THREAD invalidateRefFramesThread;
 static PLT_THREAD requestIdrFrameThread;
 static PLT_THREAD controlReceiveThread;
 static PLT_THREAD asyncCallbackThread;
+static bool invalidateRefFramesThreadStarted;
 static uint32_t lastGoodFrame;
 static uint32_t lastSeenFrame;
 static bool stopping;
@@ -94,9 +97,11 @@ static uint32_t currentEnetSequenceNumber;
 static uint64_t firstFrameTimeMs;
 
 static LINKED_BLOCKING_QUEUE invalidReferenceFrameTuples;
+static LINKED_BLOCKING_QUEUE invalidReferenceFrameTuples2;
 static LINKED_BLOCKING_QUEUE frameFecStatusQueue;
 static LINKED_BLOCKING_QUEUE asyncCallbackQueue;
 static PLT_EVENT idrFrameRequiredEvent;
+static atomic_uint idrFrameRequestMask;
 
 static PPLT_CRYPTO_CONTEXT encryptionCtx;
 static PPLT_CRYPTO_CONTEXT decryptionCtx;
@@ -277,8 +282,11 @@ static bool supportsIdrFrameRequest;
 // Initializes the control stream
 int initializeControlStream(void) {
     stopping = false;
+    invalidateRefFramesThreadStarted = false;
     PltCreateEvent(&idrFrameRequiredEvent);
+    atomic_store(&idrFrameRequestMask, 0);
     LbqInitializeLinkedBlockingQueue(&invalidReferenceFrameTuples, 20);
+    LbqInitializeLinkedBlockingQueue(&invalidReferenceFrameTuples2, 20);
     LbqInitializeLinkedBlockingQueue(&frameFecStatusQueue, 8); // Limits number of frame status reports per periodic ping interval
     LbqInitializeLinkedBlockingQueue(&asyncCallbackQueue, 30);
     PltCreateMutex(&enetMutex);
@@ -354,50 +362,94 @@ void destroyControlStream(void) {
     PltDestroyCryptoContext(decryptionCtx);
     PltCloseEvent(&idrFrameRequiredEvent);
     freeBasicLbqList(LbqDestroyLinkedBlockingQueue(&invalidReferenceFrameTuples));
+    freeBasicLbqList(LbqDestroyLinkedBlockingQueue(&invalidReferenceFrameTuples2));
     freeBasicLbqList(LbqDestroyLinkedBlockingQueue(&frameFecStatusQueue));
     freeBasicLbqList(LbqDestroyLinkedBlockingQueue(&asyncCallbackQueue));
 
     PltDeleteMutex(&enetMutex);
 }
 
-static void queueFrameInvalidationTuple(uint32_t startFrame, uint32_t endFrame) {
+static void queueFrameInvalidationTuple(uint8_t streamIndex, uint32_t startFrame, uint32_t endFrame) {
+    PLINKED_BLOCKING_QUEUE queue;
+    bool invalidationEnabled;
+
+    LC_ASSERT(streamIndex <= 1);
     LC_ASSERT(startFrame <= endFrame);
 
-    if (isReferenceFrameInvalidationEnabled()) {
+    if (streamIndex > 1) {
+        return;
+    }
+
+    if (streamIndex == 0) {
+        queue = &invalidReferenceFrameTuples;
+        invalidationEnabled = isReferenceFrameInvalidationEnabled();
+    }
+    else {
+        queue = &invalidReferenceFrameTuples2;
+        invalidationEnabled = isReferenceFrameInvalidationEnabledForStream2();
+    }
+
+    if (invalidationEnabled) {
         PQUEUED_FRAME_INVALIDATION_TUPLE qfit;
         qfit = malloc(sizeof(*qfit));
         if (qfit != NULL) {
+            int queueResult;
+
             qfit->startFrame = startFrame;
             qfit->endFrame = endFrame;
-            if (LbqOfferQueueItem(&invalidReferenceFrameTuples, qfit, &qfit->entry) == LBQ_BOUND_EXCEEDED) {
-                // Too many invalidation tuples, so we need an IDR frame now
-                Limelog("RFI range list reached maximum size limit\n");
+            queueResult = LbqOfferQueueItem(queue, qfit, &qfit->entry);
+            if (queueResult != LBQ_SUCCESS) {
                 free(qfit);
-                LiRequestIdrFrame();
+
+                if (queueResult != LBQ_BOUND_EXCEEDED) {
+                    return;
+                }
+
+                // Too many invalidation tuples, so we need an IDR frame now
+                Limelog("RFI range list for video stream %u could not accept an entry\n", streamIndex);
+                LiRequestIdrFrameForStream(streamIndex);
+            }
+            else if (streamIndex == 1) {
+                // The worker blocks on the primary queue, so wake it to service
+                // a newly queued secondary-stream range.
+                LbqSignalQueueUserWake(&invalidReferenceFrameTuples);
             }
         }
         else {
-            LiRequestIdrFrame();
+            LiRequestIdrFrameForStream(streamIndex);
         }
     }
     else {
-        LiRequestIdrFrame();
+        LiRequestIdrFrameForStream(streamIndex);
     }
 }
 
-// Request an IDR frame on demand by the decoder
-void LiRequestIdrFrame(void) {
-    // Any reference frame invalidation requests should be dropped now.
-    // We require a full IDR frame to recover.
-    freeBasicLbqList(LbqFlushQueueItems(&invalidReferenceFrameTuples));
+void LiRequestIdrFrameForStream(uint8_t streamIndex) {
+    if (streamIndex > 1) {
+        return;
+    }
 
-    // Request the IDR frame
+    // This stream's pending RFI requests are redundant after an IDR request.
+    freeBasicLbqList(LbqFlushQueueItems(streamIndex == 0 ?
+                                           &invalidReferenceFrameTuples :
+                                           &invalidReferenceFrameTuples2));
+
+    atomic_fetch_or(&idrFrameRequestMask, 1u << streamIndex);
     PltSetEvent(&idrFrameRequiredEvent);
+}
+
+// Request an IDR frame on demand by the primary decoder.
+void LiRequestIdrFrame(void) {
+    LiRequestIdrFrameForStream(0);
 }
 
 // Invalidate reference frames lost by the network
 void connectionDetectedFrameLoss(uint32_t startFrame, uint32_t endFrame) {
-    queueFrameInvalidationTuple(startFrame, endFrame);
+    connectionDetectedFrameLossForStream(0, startFrame, endFrame);
+}
+
+void connectionDetectedFrameLossForStream(uint8_t streamIndex, uint32_t startFrame, uint32_t endFrame) {
+    queueFrameInvalidationTuple(streamIndex, startFrame, endFrame);
 }
 
 // When we receive a frame, update the number of our current frame
@@ -1219,14 +1271,27 @@ static void controlReceiveThreadFunc(void* context) {
             }
             else if (ctlHdr->type == packetTypes[IDX_TERMINATION]) {
                 BYTE_BUFFER bb;
-
-
                 uint32_t terminationErrorCode;
+                int terminationPayloadLength = packetLength - (int)sizeof(*ctlHdr);
+                bool isSecondDisplayTermination = false;
 
-                if (packetLength >= 6) {
+                if (terminationPayloadLength >= (int)sizeof(terminationErrorCode)) {
                     // This is the extended termination message which contains a full HRESULT
-                    BbInitializeWrappedBuffer(&bb, (char*)ctlHdr, sizeof(*ctlHdr), packetLength - sizeof(*ctlHdr), BYTE_ORDER_BIG);
+                    BbInitializeWrappedBuffer(&bb, (char*)ctlHdr, sizeof(*ctlHdr), terminationPayloadLength, BYTE_ORDER_BIG);
                     BbGet32(&bb, &terminationErrorCode);
+
+                    // Sunshine DS extends the existing HRESULT payload with a video
+                    // stream index and a zero reserved byte. A secondary-only failure
+                    // must not disconnect the shared control session or primary video.
+                    if (terminationPayloadLength >= (int)sizeof(terminationErrorCode) + 2) {
+                        uint8_t streamIndex;
+                        uint8_t reserved;
+
+                        if (BbGet8(&bb, &streamIndex) && BbGet8(&bb, &reserved) &&
+                                streamIndex == 1 && reserved == 0) {
+                            isSecondDisplayTermination = true;
+                        }
+                    }
 
                     Limelog("Server notified termination reason: 0x%08x\n", terminationErrorCode);
 
@@ -1252,12 +1317,25 @@ static void controlReceiveThreadFunc(void* context) {
                     default:
                         break;
                     }
+
+                    if (isSecondDisplayTermination) {
+                        Limelog("Server ended second display stream only: %d\n", terminationErrorCode);
+                        LiHandleSecondDisplayTermination((int)terminationErrorCode);
+                        free(ctlHdr);
+                        continue;
+                    }
                 }
                 else {
                     uint16_t terminationReason;
 
+                    if (terminationPayloadLength < (int)sizeof(terminationReason)) {
+                        Limelog("Discarding runt termination packet: %d-byte payload\n", terminationPayloadLength);
+                        free(ctlHdr);
+                        continue;
+                    }
+
                     // This is the short termination message
-                    BbInitializeWrappedBuffer(&bb, (char*)ctlHdr, sizeof(*ctlHdr), packetLength - sizeof(*ctlHdr), BYTE_ORDER_LITTLE);
+                    BbInitializeWrappedBuffer(&bb, (char*)ctlHdr, sizeof(*ctlHdr), terminationPayloadLength, BYTE_ORDER_LITTLE);
                     BbGet16(&bb, &terminationReason);
 
                     Limelog("Server notified termination reason: 0x%04x\n", terminationReason);
@@ -1408,7 +1486,7 @@ static void lossStatsThreadFunc(void* context) {
     }
 }
 
-static void requestIdrFrame(void) {
+static void requestIdrFrame(uint8_t streamIndex) {
     // If this server does not have a known IDR frame request
     // message, we'll accomplish the same thing by creating a
     // reference frame invalidation request.
@@ -1425,7 +1503,9 @@ static void requestIdrFrame(void) {
             payload[1] = LE64(lastSeenFrame);
         }
 
-        payload[2] = 0;
+        // Sunshine DS interprets the formerly reserved value as a video stream
+        // index. Zero remains byte-for-byte compatible with existing clients.
+        payload[2] = LE64(streamIndex);
 
         // Send the reference frame invalidation request and read the response
         if (!sendMessageAndDiscardReply(packetTypes[IDX_INVALIDATE_REF_FRAMES],
@@ -1440,10 +1520,16 @@ static void requestIdrFrame(void) {
         }
     }
     else {
+        char payload[2];
+
+        LC_ASSERT(payloadLengths[IDX_REQUEST_IDR_FRAME] == sizeof(payload));
+        memcpy(payload, preconstructedPayloads[IDX_REQUEST_IDR_FRAME], sizeof(payload));
+        payload[0] = (char) streamIndex;
+
         // Send IDR frame request and read the response
         if (!sendMessageAndDiscardReply(packetTypes[IDX_REQUEST_IDR_FRAME],
-                                        payloadLengths[IDX_REQUEST_IDR_FRAME],
-                                        preconstructedPayloads[IDX_REQUEST_IDR_FRAME],
+                                        sizeof(payload),
+                                        payload,
                                         CTRL_CHANNEL_URGENT,
                                         ENET_PACKET_FLAG_RELIABLE,
                                         false)) {
@@ -1453,18 +1539,21 @@ static void requestIdrFrame(void) {
         }
     }
 
-    Limelog("IDR frame request sent\n");
+    Limelog("IDR frame request sent for video stream %u\n", streamIndex);
 }
 
-static void requestInvalidateReferenceFrames(uint32_t startFrame, uint32_t endFrame) {
+static void requestInvalidateReferenceFrames(uint8_t streamIndex, uint32_t startFrame, uint32_t endFrame) {
     int64_t payload[3];
 
+    LC_ASSERT(streamIndex <= 1);
     LC_ASSERT(startFrame <= endFrame);
-    LC_ASSERT(isReferenceFrameInvalidationEnabled());
+    LC_ASSERT(streamIndex == 0 ? isReferenceFrameInvalidationEnabled() :
+                                 isReferenceFrameInvalidationEnabledForStream2());
+    LC_ASSERT(payloadLengths[IDX_INVALIDATE_REF_FRAMES] == sizeof(payload));
 
     payload[0] = LE64(startFrame);
     payload[1] = LE64(endFrame);
-    payload[2] = 0;
+    payload[2] = LE64(streamIndex);
 
     // Send the reference frame invalidation request and read the response
     if (!sendMessageAndDiscardReply(packetTypes[IDX_INVALIDATE_REF_FRAMES],
@@ -1477,40 +1566,55 @@ static void requestInvalidateReferenceFrames(uint32_t startFrame, uint32_t endFr
         return;
     }
 
-    Limelog("Invalidate reference frame request sent (%d to %d)\n", startFrame, endFrame);
+    Limelog("Invalidate reference frame request sent for video stream %u (%d to %d)\n",
+            streamIndex, startFrame, endFrame);
+}
+
+static void drainReferenceFrameInvalidationQueue(PLINKED_BLOCKING_QUEUE queue,
+                                                 uint8_t streamIndex,
+                                                 PQUEUED_FRAME_INVALIDATION_TUPLE qfit) {
+    uint32_t startFrame = qfit->startFrame;
+    uint32_t endFrame = qfit->endFrame;
+
+    // Aggregate all lost frames for this encoder into one range.
+    do {
+        LC_ASSERT(qfit->endFrame >= endFrame);
+        endFrame = qfit->endFrame;
+        free(qfit);
+    } while (LbqPollQueueElement(queue, (void**)&qfit) == LBQ_SUCCESS);
+
+    requestInvalidateReferenceFrames(streamIndex, startFrame, endFrame);
 }
 
 static void invalidateRefFramesFunc(void* context) {
-    LC_ASSERT(isReferenceFrameInvalidationEnabled());
+    LC_ASSERT(isReferenceFrameInvalidationEnabled() ||
+              (LiIsSecondDisplayNegotiated() && isReferenceFrameInvalidationEnabledForStream2()));
 
     while (!PltIsThreadInterrupted(&invalidateRefFramesThread)) {
         PQUEUED_FRAME_INVALIDATION_TUPLE qfit;
-        uint32_t startFrame;
-        uint32_t endFrame;
+        int waitResult;
 
-        // Wait for a reference frame invalidation request or a request to shutdown
-        if (LbqWaitForQueueElement(&invalidReferenceFrameTuples, (void**)&qfit) != LBQ_SUCCESS) {
-            // Bail if we're stopping
+        // Wait on the primary queue. Stream one wakes this queue explicitly
+        // after adding work to its own independent queue.
+        waitResult = LbqWaitForQueueElement(&invalidReferenceFrameTuples, (void**)&qfit);
+        if (waitResult == LBQ_INTERRUPTED) {
             return;
         }
 
-        startFrame = qfit->startFrame;
-        endFrame = qfit->endFrame;
+        if (waitResult == LBQ_SUCCESS) {
+            drainReferenceFrameInvalidationQueue(&invalidReferenceFrameTuples, 0, qfit);
+        }
 
-        // Aggregate all lost frames into one range
-        do {
-            LC_ASSERT(qfit->endFrame >= endFrame);
-            endFrame = qfit->endFrame;
-            free(qfit);
-        } while (LbqPollQueueElement(&invalidReferenceFrameTuples, (void**)&qfit) == LBQ_SUCCESS);
-
-        // Send the reference frame invalidation request
-        requestInvalidateReferenceFrames(startFrame, endFrame);
+        if (LbqPollQueueElement(&invalidReferenceFrameTuples2, (void**)&qfit) == LBQ_SUCCESS) {
+            drainReferenceFrameInvalidationQueue(&invalidReferenceFrameTuples2, 1, qfit);
+        }
     }
 }
 
 static void requestIdrFrameFunc(void* context) {
     while (!PltIsThreadInterrupted(&requestIdrFrameThread)) {
+        unsigned int requestMask;
+
         PltWaitForEvent(&idrFrameRequiredEvent);
         PltClearEvent(&idrFrameRequiredEvent);
 
@@ -1519,11 +1623,13 @@ static void requestIdrFrameFunc(void* context) {
             return;
         }
 
-        // Any pending reference frame invalidation requests are now redundant
-        freeBasicLbqList(LbqFlushQueueItems(&invalidReferenceFrameTuples));
-
-        // Request the IDR frame
-        requestIdrFrame();
+        requestMask = atomic_exchange(&idrFrameRequestMask, 0);
+        if (requestMask & 0x1) {
+            requestIdrFrame(0);
+        }
+        if (requestMask & 0x2) {
+            requestIdrFrame(1);
+        }
     }
 }
 
@@ -1531,6 +1637,7 @@ static void requestIdrFrameFunc(void* context) {
 int stopControlStream(void) {
     stopping = true;
     LbqSignalQueueShutdown(&invalidReferenceFrameTuples);
+    LbqSignalQueueShutdown(&invalidReferenceFrameTuples2);
     LbqSignalQueueShutdown(&frameFecStatusQueue);
     LbqSignalQueueDrain(&asyncCallbackQueue);
     PltSetEvent(&idrFrameRequiredEvent);
@@ -1552,10 +1659,10 @@ int stopControlStream(void) {
     PltJoinThread(&controlReceiveThread);
     PltJoinThread(&asyncCallbackThread);
 
-    // We will only have an RFI thread if RFI is enabled
-    if (isReferenceFrameInvalidationEnabled()) {
+    if (invalidateRefFramesThreadStarted) {
         PltInterruptThread(&invalidateRefFramesThread);
         PltJoinThread(&invalidateRefFramesThread);
+        invalidateRefFramesThreadStarted = false;
     }
 
     if (peer != NULL) {
@@ -1913,8 +2020,9 @@ int startControlStream(void) {
         return err;
     }
 
-    // Only create the reference frame invalidation thread if RFI is enabled
-    if (isReferenceFrameInvalidationEnabled()) {
+    // Both encoders share this control worker but retain independent queues.
+    if (isReferenceFrameInvalidationEnabled() ||
+            (LiIsSecondDisplayNegotiated() && isReferenceFrameInvalidationEnabledForStream2())) {
         err = PltCreateThread("InvRefFrames", invalidateRefFramesFunc, NULL, &invalidateRefFramesThread);
         if (err != 0) {
             stopping = true;
@@ -1953,6 +2061,8 @@ int startControlStream(void) {
 
             return err;
         }
+
+        invalidateRefFramesThreadStarted = true;
     }
 
     return 0;

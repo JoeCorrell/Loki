@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.thor.feature.home.shell
 
 import androidx.compose.animation.animateColorAsState
@@ -9,11 +11,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,11 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
@@ -93,10 +103,9 @@ fun BottomNavBar(
     val edgeColor = colors.outline.copy(alpha = BAR_EDGE_ALPHA)
     val edgeStroke = with(LocalDensity.current) { 1.dp.toPx() }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(BAR_HEIGHT.dp)
             // The bar is a raised thing lying on the page, so it takes the
             // theme's raised treatment — which is what gives it a shadow on
             // Switch, a lit edge on Vision and a hard outline on Retro without
@@ -131,20 +140,31 @@ fun BottomNavBar(
                     strokeWidth = edgeStroke,
                 )
             }
-            .padding(
-                horizontal = dimens.spacingSmall,
+            // Keep the bar itself flush with the physical edge while lifting its
+            // controls above Android's persistent gesture handle. Padding only
+            // the labels left the selected underline and the Home caption under
+            // the handle on the Thor's shorter panel.
+            .windowInsetsPadding(
+                WindowInsets.navigationBarsIgnoringVisibility.only(WindowInsetsSides.Bottom),
             ),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        tabs.forEach { tab ->
-            NavTab(
-                tab = tab,
-                selected = tab == selectedTab,
-                cursorOn = tab == focusedTab,
-                onClick = { onTabSelected(tab) },
-                modifier = Modifier.weight(1f),
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(BAR_HEIGHT.dp)
+                .padding(horizontal = dimens.spacingSmall),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { tab ->
+                NavTab(
+                    tab = tab,
+                    selected = tab == selectedTab,
+                    cursorOn = tab == focusedTab,
+                    onClick = { onTabSelected(tab) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -176,7 +196,7 @@ private fun NavTab(
     val lit = cursorOn || hover.isHovered
 
     val tint by animateColorAsState(
-        targetValue = if (selected) colors.cursor else colors.onSurfaceVariant,
+        targetValue = if (selected) colors.selection else colors.onSurfaceVariant,
         animationSpec = motion.tweenSpec(motion.cursorMillis),
         label = "navTabTint",
     )
@@ -239,9 +259,8 @@ private fun NavTab(
                 if (selection > 0f) {
                     Modifier
                         .background(
-                            Brush.horizontalGradient(colors.accentStops),
+                            colors.selection.copy(alpha = SELECTED_PILL_ALPHA * selection),
                             shape = shape,
-                            alpha = SELECTED_PILL_ALPHA * selection,
                         )
                         // An edge as well as a fill. The fill alone disappears on
                         // the themes whose accent is nearly the surface colour —
@@ -249,7 +268,7 @@ private fun NavTab(
                         // hairline is legible on every one of them.
                         .border(
                             width = SELECTED_PILL_BORDER.dp,
-                            color = colors.cursor.copy(alpha = SELECTED_PILL_BORDER_ALPHA * selection),
+                            color = colors.selection.copy(alpha = SELECTED_PILL_BORDER_ALPHA * selection),
                             shape = shape,
                         )
                 } else {
@@ -258,6 +277,10 @@ private fun NavTab(
             )
             .thorCursor(focused = lit, shape = shape)
             .pointerHover(hover)
+            .semantics {
+                role = Role.Tab
+                this.selected = selected
+            }
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -290,7 +313,7 @@ private fun NavTab(
                 .height(UNDERLINE_HEIGHT.dp)
                 .width(UNDERLINE_WIDTH.dp * selection)
                 .clip(ThorTheme.shapes.pill)
-                .background(colors.cursor),
+                .background(colors.selection),
         )
     }
 }

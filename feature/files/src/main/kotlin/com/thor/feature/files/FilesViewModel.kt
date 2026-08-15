@@ -23,6 +23,7 @@ import com.thor.core.model.parentPathOf
 import com.thor.core.model.siblingPath
 import com.thor.core.model.sortFiles
 import com.thor.data.files.FileListing
+import com.thor.data.files.FileRecoveryReport
 import com.thor.data.files.FileRepository
 import com.thor.data.files.FileResult
 import com.thor.data.files.FileShortcut
@@ -71,6 +72,9 @@ class FilesViewModel @Inject constructor(
     /** Whether the explorer has ever been opened, so it re-reads rather than reloads. */
     private var started = false
 
+    /** Recovery is durable and idempotent, but one check per view-model is enough. */
+    private var recoveryChecked = false
+
     // ---- Opening -----------------------------------------------------------
 
     /**
@@ -94,7 +98,16 @@ class FilesViewModel @Inject constructor(
          */
         _state.update { it.copy(pane = FilesPane.LISTING, prompt = null, message = null) }
 
+        val shouldRecover = !recoveryChecked
+        recoveryChecked = true
         viewModelScope.launch {
+            if (shouldRecover) {
+                val report = repository.recoverInterruptedOperations()
+                report.notice()?.let { notice ->
+                    _state.update { it.copy(notice = notice) }
+                }
+            }
+
             /*
              * The rail is rebuilt every time, not only on the first open.
              *
@@ -700,6 +713,7 @@ class FilesViewModel @Inject constructor(
                 it.copy(
                     transfer = FileTransfer(clipboard.label, 0L, 0L),
                     message = null,
+                    notice = null,
                 )
             }
 
@@ -718,6 +732,7 @@ class FilesViewModel @Inject constructor(
                     destination = destination,
                     move = clipboard.move,
                     onProgress = throttledProgress(clipboard.label),
+                    onVerifying = { showVerification() },
                 )
 
                 _state.update {
@@ -745,7 +760,9 @@ class FilesViewModel @Inject constructor(
     private fun compress(prompt: FilesPrompt.Compress) {
         val destination = _state.value.path
         transferJob = viewModelScope.launch {
-            _state.update { it.copy(transfer = FileTransfer("Packing", 0L, 0L), message = null) }
+            _state.update {
+                it.copy(transfer = FileTransfer("Packing", 0L, 0L), message = null, notice = null)
+            }
 
             try {
                 val result = repository.compress(
@@ -753,6 +770,7 @@ class FilesViewModel @Inject constructor(
                     destination = destination,
                     archiveName = prompt.name,
                     onProgress = throttledProgress("Packing"),
+                    onVerifying = { showVerification() },
                 )
                 _state.update {
                     it.copy(marked = emptySet(), message = result.messageOrNull())
@@ -769,7 +787,9 @@ class FilesViewModel @Inject constructor(
     /** Unpacks a zip into a folder of its own, beside it. */
     private fun extract(entry: FileEntry) {
         transferJob = viewModelScope.launch {
-            _state.update { it.copy(transfer = FileTransfer("Extracting", 0L, 0L), message = null) }
+            _state.update {
+                it.copy(transfer = FileTransfer("Extracting", 0L, 0L), message = null, notice = null)
+            }
 
             try {
                 val result = repository.extract(
@@ -797,6 +817,15 @@ class FilesViewModel @Inject constructor(
          * after that cleanup; reloading here raced it and briefly exposed the
          * incomplete hidden item to listings that show hidden files.
          */
+    }
+
+    /** The byte pass finished; the destination is now being read back. */
+    private fun showVerification() {
+        _state.update { current ->
+            current.copy(
+                transfer = current.transfer?.copy(label = "Verifying"),
+            )
+        }
     }
 
     // ---- Prompts -----------------------------------------------------------
@@ -1041,7 +1070,7 @@ class FilesViewModel @Inject constructor(
     fun openCrumb(path: String) = navigateTo(path)
 
     fun dismissMessage() {
-        _state.update { it.copy(message = null) }
+        _state.update { it.copy(message = null, notice = null) }
     }
 
     private companion object {
@@ -1072,6 +1101,23 @@ enum class FilesOutcome {
     CLOSE,
 
     REJECTED,
+}
+
+/** A short, loss-averse account of what startup recovery decided. */
+private fun FileRecoveryReport.notice(): String? = when {
+    !foundAnything -> null
+    unresolved > 0 ->
+        "Found $interrupted interrupted ${if (interrupted == 1) "operation" else "operations"}; " +
+            "$unresolved will be checked again when its storage is reachable."
+    moveSourcesRetained > 0 ->
+        "Recovered safely. Both the source and verified copy were kept for " +
+            "$moveSourcesRetained interrupted ${if (moveSourcesRetained == 1) "move" else "moves"}."
+    partialsRemoved > 0 ->
+        "Removed $partialsRemoved incomplete ${if (partialsRemoved == 1) "transfer" else "transfers"}; " +
+            "the originals were untouched."
+    publishedKept > 0 ->
+        "Recovered $publishedKept completed ${if (publishedKept == 1) "output" else "outputs"} after interruption."
+    else -> "Checked $interrupted interrupted ${if (interrupted == 1) "operation" else "operations"}; no files were removed."
 }
 
 /** The sentence to show, or null when it worked and there is nothing to say. */

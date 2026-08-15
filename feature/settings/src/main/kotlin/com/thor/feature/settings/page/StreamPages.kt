@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.HdrOn
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Settings
@@ -38,9 +39,9 @@ import com.thor.feature.settings.SettingsViewModel
 internal const val STREAM_QUALITY_ROWS = 9
 
 /** How many rows [StreamControlsPage] draws. */
-// The explanatory "Leaving a stream" item is an InfoRow, so only the seven
+// The explanatory "Leaving a stream" item is an InfoRow, so only the ten
 // controls above it belong to controller navigation.
-internal const val STREAM_CONTROLS_ROWS = 7
+internal const val STREAM_CONTROLS_ROWS = 10
 
 /** How many rows [StreamHostsPage] draws. */
 internal const val STREAM_HOSTS_ROWS = 2
@@ -63,6 +64,15 @@ private val RESOLUTIONS = listOf(
 )
 
 private val FRAME_RATES = listOf(30, 60, 120)
+
+/**
+ * Frame rates offered for the second display.
+ *
+ * Tops out well below the game's. What lands on that panel is a desktop, and the
+ * encoder time and bandwidth a higher rate costs come straight out of the screen
+ * the user is actually playing on.
+ */
+private val SECOND_DISPLAY_FRAME_RATES = listOf(15, 24, 30, 60)
 
 /**
  * What THOR asks a PC to send.
@@ -256,13 +266,65 @@ internal fun StreamControlsPage(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         SwitchRow(
+            title = "Bottom screen as a second display",
+            icon = Icons.Rounded.Monitor,
+            subtitle = "Shows a second PC display on the bottom panel instead of the " +
+                "trackpad. Needs a host that serves two video streams; a standard " +
+                "Sunshine declines and the trackpad stays.",
+            checked = quality.secondDisplay,
+            focused = focusedRow == 0,
+            onCheckedChange = { on ->
+                viewModel.updateStream { it.copy(quality = it.quality.copy(secondDisplay = on)) }
+            },
+        )
+        RowDivider()
+
+        ChoiceRow(
+            title = "Second display frame rate",
+            icon = Icons.Rounded.Speed,
+            subtitle = "Lower than the game's on purpose. A desktop does not need the " +
+                "frames a game does, and every one spent here is bandwidth taken from " +
+                "the screen being played on.",
+            options = SECOND_DISPLAY_FRAME_RATES,
+            selected = SECOND_DISPLAY_FRAME_RATES.firstOrNull { it == quality.secondDisplayFps }
+                ?: 30,
+            focused = focusedRow == 1,
+            label = { "$it fps" },
+            onSelected = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(secondDisplayFps = value))
+                }
+            },
+        )
+        RowDivider()
+
+        IntSliderRow(
+            title = "Second display bandwidth",
+            icon = Icons.Rounded.NetworkCheck,
+            subtitle = "Budgeted separately from the game's, not split out of it. A " +
+                "mostly static desktop needs little, and taking it proportionally " +
+                "would starve the screen that is actually moving.",
+            value = quality.secondDisplayBitrateKbps / 1000,
+            range = 1..40,
+            focused = focusedRow == 2,
+            suffix = " Mbps",
+            onValueChange = { value ->
+                viewModel.updateStream {
+                    it.copy(quality = it.quality.copy(secondDisplayBitrateKbps = value * 1000))
+                }
+            },
+        )
+        RowDivider()
+
+        SwitchRow(
             title = "Trackpad and keyboard on the bottom screen",
             icon = Icons.Rounded.Keyboard,
             subtitle = "The reason the panel exists: Android's own keyboard cannot " +
                 "appear over a stream, or on the second screen at all, so without " +
-                "this there is no way to type on the PC.",
+                "this there is no way to type on the PC. Ignored while the panel is " +
+                "showing a second display — it cannot be both.",
             checked = quality.bottomPanel,
-            focused = focusedRow == 0,
+            focused = focusedRow == 3,
             onCheckedChange = { on ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(bottomPanel = on)) }
             },
@@ -276,7 +338,7 @@ internal fun StreamControlsPage(
             value = quality.trackpadSpeed,
             range = 0.5f..4f,
             steps = 13,
-            focused = focusedRow == 1,
+            focused = focusedRow == 4,
             valueLabel = { "%.1f×".format(it) },
             onValueChange = { value ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(trackpadSpeed = value)) }
@@ -290,7 +352,7 @@ internal fun StreamControlsPage(
             subtitle = "A tap on the trackpad is a left click; two fingers is a right " +
                 "click.",
             checked = quality.tapToClick,
-            focused = focusedRow == 2,
+            focused = focusedRow == 5,
             onCheckedChange = { on ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(tapToClick = on)) }
             },
@@ -303,7 +365,7 @@ internal fun StreamControlsPage(
             subtitle = "Content follows your fingers, as it does everywhere else on a " +
                 "touchscreen. Off scrolls the way a mouse wheel does.",
             checked = quality.naturalScroll,
-            focused = focusedRow == 3,
+            focused = focusedRow == 6,
             onCheckedChange = { on ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(naturalScroll = on)) }
             },
@@ -313,11 +375,11 @@ internal fun StreamControlsPage(
         SwitchRow(
             title = "Touch the picture to point",
             icon = Icons.Rounded.TouchApp,
-            subtitle = "Puts the PC's cursor exactly where you touch the video. Off by " +
-                "default: a hand resting on the screen would fling the cursor across " +
-                "the PC.",
+            subtitle = "Puts the PC's cursor exactly where you touch the video. On by " +
+                "default for direct desktop control; turn it off if a hand resting on " +
+                "the screen disrupts a game.",
             checked = quality.touchVideoAsPointer,
-            focused = focusedRow == 4,
+            focused = focusedRow == 7,
             onCheckedChange = { on ->
                 viewModel.updateStream {
                     it.copy(quality = it.quality.copy(touchVideoAsPointer = on))
@@ -333,7 +395,7 @@ internal fun StreamControlsPage(
             value = quality.stickDeadZone,
             range = 0f..0.4f,
             steps = 7,
-            focused = focusedRow == 5,
+            focused = focusedRow == 8,
             valueLabel = { "%.0f%%".format(it * 100) },
             onValueChange = { value ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(stickDeadZone = value)) }
@@ -348,7 +410,7 @@ internal fun StreamControlsPage(
                 "then never sees Start, because a key press goes to one window — turn " +
                 "this off if a game needs it.",
             checked = quality.startOpensSettings,
-            focused = focusedRow == 6,
+            focused = focusedRow == 9,
             onCheckedChange = { on ->
                 viewModel.updateStream {
                     it.copy(quality = it.quality.copy(startOpensSettings = on))
@@ -398,7 +460,7 @@ internal fun StreamHostsPage(
             subtitle = "What Loki is listed as in Sunshine's client list on the PC. " +
                 "Changing it does not undo a pairing.",
             value = stream.clientName,
-            focused = focusedRow == 1,
+            focused = focusedRow == 4,
             onValueChange = { value ->
                 viewModel.updateStream { it.copy(clientName = value) }
             },

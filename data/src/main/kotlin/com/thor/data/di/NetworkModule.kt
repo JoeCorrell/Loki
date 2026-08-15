@@ -1,6 +1,5 @@
 package com.thor.data.di
 
-import android.content.Context
 import com.thor.data.metadata.MetadataProvider
 import com.thor.data.metadata.ScreenScraperProvider
 import com.thor.data.metadata.SteamGridDbProvider
@@ -9,13 +8,9 @@ import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import kotlinx.serialization.json.Json
-import okhttp3.Cache
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -31,21 +26,15 @@ object NetworkModule {
         explicitNulls = false
     }
 
-    @Provides
-    @Singleton
-    fun providesOkHttpClient(
-        @ApplicationContext context: Context,
-    ): OkHttpClient = OkHttpClient.Builder()
-        // Metadata responses are highly cacheable and a rescan re-requests the
-        // same endpoints; an on-disk cache turns a repeat scrape into no traffic.
-        .cache(Cache(java.io.File(context.cacheDir, "http"), HTTP_CACHE_BYTES))
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
-
-    private const val HTTP_CACHE_BYTES = 64L * 1024 * 1024
+    /*
+     * The `OkHttpClient` this module used to provide now lives in
+     * `:core:streaming`, as `StreamNetworkModule`.
+     *
+     * It moved rather than being copied: the streaming layer is its own module
+     * now and needs a client, and two unqualified `OkHttpClient` bindings in one
+     * Hilt graph will not compile. Everything here still injects it exactly as
+     * before, through this module's `api` dependency on `:core:streaming`.
+     */
 }
 
 /**

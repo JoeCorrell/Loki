@@ -9,9 +9,9 @@ import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
-import android.view.KeyEvent
 import androidx.compose.runtime.Composable
 import com.thor.core.input.ControllerProfiles
+import com.thor.core.input.controllerKeyLabel
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.ControllerProfile
 import com.thor.core.model.ThorSettings
@@ -143,7 +143,7 @@ private fun ProfileBindings(
         val bound = profile.bindings
             .filterValues { it == command }
             .keys
-            .map(::keyLabel)
+            .map(::controllerKeyLabel)
         val armed = awaiting == command
 
         ActionRow(
@@ -240,36 +240,6 @@ private fun ProfileBindings(
         trailingLabel = "Done",
         onClick = { viewModel.editControllerProfile(null) },
     )
-}
-
-/**
- * A key code as the pad's owner would name it.
- *
- * `KeyEvent.keyCodeToString` returns things like `KEYCODE_BUTTON_R2`, which is
- * accurate and unreadable. The common pad buttons are named as they are printed on
- * the device; anything else falls back to the platform's name with its prefix
- * dropped, which is still better than a number.
- */
-private fun keyLabel(keyCode: Int): String = when (keyCode) {
-    KeyEvent.KEYCODE_BUTTON_A -> "A"
-    KeyEvent.KEYCODE_BUTTON_B -> "B"
-    KeyEvent.KEYCODE_BUTTON_X -> "X"
-    KeyEvent.KEYCODE_BUTTON_Y -> "Y"
-    KeyEvent.KEYCODE_BUTTON_L1 -> "L1"
-    KeyEvent.KEYCODE_BUTTON_R1 -> "R1"
-    KeyEvent.KEYCODE_BUTTON_L2 -> "L2"
-    KeyEvent.KEYCODE_BUTTON_R2 -> "R2"
-    KeyEvent.KEYCODE_BUTTON_THUMBL -> "Left stick"
-    KeyEvent.KEYCODE_BUTTON_THUMBR -> "Right stick"
-    KeyEvent.KEYCODE_BUTTON_START -> "Start"
-    KeyEvent.KEYCODE_BUTTON_SELECT -> "Select"
-    KeyEvent.KEYCODE_BUTTON_MODE -> "Guide"
-    KeyEvent.KEYCODE_DPAD_UP -> "D-pad up"
-    KeyEvent.KEYCODE_DPAD_DOWN -> "D-pad down"
-    KeyEvent.KEYCODE_DPAD_LEFT -> "D-pad left"
-    KeyEvent.KEYCODE_DPAD_RIGHT -> "D-pad right"
-    KeyEvent.KEYCODE_DPAD_CENTER -> "D-pad press"
-    else -> KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_").replace('_', ' ')
 }
 
 /** Active profile, copy. */

@@ -12,6 +12,13 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object FilesModule {
 
+    /** The on-disk operation ledger behind crash-safe explorer recovery. */
+    @Provides
+    @Singleton
+    fun provideFileOperationJournal(
+        journal: DurableFileOperationJournal,
+    ): FileOperationJournal = journal
+
     /**
      * The configured shares, read from settings each time they are wanted.
      *

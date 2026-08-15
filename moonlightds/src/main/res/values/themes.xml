@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The same deliberately minimal platform theme Loki uses, under this app's own
+      name. All real styling is done in Compose by ThorTheme; this exists only to
+      give the window a dark background before the first frame and to make the
+      system bars transparent so the interface can draw edge to edge.
+
+      Named for this app rather than reusing `Theme.Thor`: the shared modules
+      declare no theme, and a standalone app that referenced the launcher's style
+      name would be depending on a resource that is not part of any contract.
+    -->
+    <style name="Theme.MoonlightDs" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

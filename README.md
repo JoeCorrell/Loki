@@ -24,6 +24,20 @@ The goal of Loki is simple: create the most polished, feature-rich and reliable 
 
 <div align="center">
 
+## Moonlight DS quick start
+
+On the Windows PC, install a virtual display driver, run **Sunshine DS**, and finish Sunshine's setup in its web interface. On the AYN Thor, install **Moonlight DS.apk**, add and pair the PC, enable **Second screen**, then start the Desktop stream. The primary PC monitor appears on the top panel and the virtual monitor appears on the bottom panel.
+
+Press **Start** to open settings. A stationary **two-finger tap** on the bottom screen shows or hides the on-screen keyboard. Press **Back** to leave a stream; leaving or switching away from Moonlight DS closes its windows on both Thor screens.
+
+More detail is in the [Moonlight DS README](moonlightds/README.md).
+
+<br>
+
+</div>
+
+<div align="center">
+
 ## Getting started
 
 Download the APK from [Releases](https://github.com/Prof-Mags/Thor-Launcher/releases), install it, open it once, and set it as your home app when Loki offers. Your games, saves and emulators are untouched, and you can uninstall at any time without losing any of them.
@@ -112,6 +126,20 @@ Widgets resize and move in edit mode, with on-screen buttons as well as the cont
 
 <div align="center">
 
+## Files and network shares
+
+The built-in file explorer is controller-first and spans both displays: folders and files stay on the browsing panel while details, storage use and the complete action set stay visible on the other. It can mark items across folders, copy or move whole trees between internal storage, cards and SMB shares, create and rename folders, make zip archives, extract them into an isolated folder, sort, show hidden items and hand ordinary files to Android apps.
+
+Copies and cross-volume moves are published only after a hidden staging tree has been read back and its SHA-256 fingerprint matches the bytes Loki read from the source. An existing name is never overwritten, a move never removes its source before verification, and an interrupted operation is journaled in Loki's private storage. Opening Files after a crash removes only the exact recorded partial item; if the destination had already been published, both it and any remaining source are kept and Loki says what it recovered. Zip creation is read back before publish, while extraction rejects traversal paths, path conflicts, excessive depth, excessive item counts and implausible expansion before its temporary folder is renamed into view.
+
+Add network storage under **Settings -> System & accessibility -> Network shares**. Opening that page automatically combines SMB mDNS announcements, a bounded scan of the real local subnet and direct NetBIOS name queries. Found machines appear ready to adopt; saved shares remain in the Files rail even while asleep, and transfers between a share and the device use the same staging, verification and recovery rules as local storage.
+
+<br>
+
+</div>
+
+<div align="center">
+
 ## Controls
 
 **A** launches, and holding it picks an icon up. **B** goes back. **X** favourites. **Y** opens the context menu. **L1** and **R1** step through screenshots, **L2** and **R2** turn pages. Clicking either stick raises the shortcut panel, **Start** opens the side panel, **Select** opens the app drawer, and **Guide** goes Home. Holding a trigger speeds up whatever else you press. A paired keyboard works too, using WASD, E, F, Tab, Enter and Escape.
@@ -124,7 +152,7 @@ The AYN button's firmware does not send anything an app can read, so Loki cannot
 
 ### The shortcut panel
 
-Clicking either stick raises twelve tiles: the app drawer, search across the whole library, Loki's settings, swap screens, toggle couch mode, rescan the library, record both panels, record the real screen, the Wi-Fi panel, Bluetooth settings, the volume panel, and Android settings. Anything needing a privileged permission is deliberately absent, because a tile that silently does nothing is worse than no tile at all.
+Clicking either stick raises twelve tiles: the app drawer, search across the whole library, Loki's settings, swap screens, toggle couch mode, rescan the library, record Loki's panels, record the physical screens, the Wi-Fi panel, Bluetooth settings, the volume panel, and Android settings. Anything needing a privileged permission is deliberately absent, because a tile that silently does nothing is worse than no tile at all.
 
 <br>
 
@@ -196,6 +224,8 @@ Installing a pack replaces what is already there on every system it covers, incl
 
 A smart folder holds whatever matches a query rather than what you filed into it, so it maintains itself as the library changes. **Settings → Games & artwork → Smart folders** starts one from a preset — Continue, Backlog, Favourites, Best of, New, Most played, Retro, or an empty query — and then every field is yours: which system, favourites only, unplayed only, played within so many days, a minimum rating, released between two years, a title fragment, the order, the direction, and a cap on how many it keeps. The folder appears on the grid immediately and fills itself from then on. Star a game and it turns up in a Favourites folder with nothing asked to refresh.
 
+The shortcut panel also includes **Play Compass**, an on-device, explainable alternative to the opaque recommendation rows common in media apps. Choose Continue, Quick pick, Rediscover or Surprise me; Loki builds a small controller-driven deck from local play history, completion estimates, favourites, ratings and recency, and writes the reason directly on every pick. Nothing is uploaded and the Surprise deck rotates daily without building an account profile.
+
 <br>
 
 ### Backup
@@ -254,13 +284,27 @@ Resolution, frame rate and bitrate are all configurable, with 1080p60 at 20 Mbps
 
 <br>
 
+### Moonlight DS
+
+Everything above is also a separate application. **Moonlight DS** is the streaming section on its own, for people who want dual-screen streaming on the Thor and not a front-end around it — no library, no scraping, no emulators, no home screen.
+
+It is not a port or a reimplementation. It is the same code: the discovery, pairing and session layer, the two panels, the couch dashboard, the trackpad, the on-screen keyboard and the controller routing are all the same modules Loki composes, so a fix to any of them is a fix to both applications in the same commit. What differs is the shell around them — Loki's has a grid, six other sections and a Home button to answer, and Moonlight DS's has one screen and a settings page.
+
+The dual-screen behaviour comes across whole. The PC list on one panel and the selected machine on the other, touching a panel to give it the controller, the screen modes including couch, `Swap the panels`, and the trackpad and keyboard on the second screen during a session. It registers no home activity, because it is an application rather than a launcher: the second panel is a presentation window it owns, which needs no such claim.
+
+Its settings are its own, in the app, and cover every streaming value Loki exposes — resolution, frame rate, bandwidth, HDR, codec, audio, connection type, host audio and optimisation, the trackpad and its speed, tap to click, natural scrolling, touch-to-point, the stick dead zone, what Start does, PC discovery and the name this device gives to Sunshine — plus the screen and controller pages the launcher keeps in its own categories.
+
+Installed alongside Loki rather than instead of it. It is a different application id, so the two do not share settings, paired PCs or storage, and having both costs nothing but the second icon. **Loki's own streaming section is completely unchanged.**
+
+<br>
+
 </div>
 
 <div align="center">
 
 ## Making it yours
 
-Fourteen themes ship, arranged on four shelves by what colour they commit to rather than by brightness. Material, Obsidian, Slate and Linen are neutral, where the greys are the design and the accent stays quiet. Ember, Citrine, Sakura and Vapor are warm. Nocturne, Aurora, Orchid and Terminal are cool. One Dark and Palenight are taken from code editors, and share the mid-toned ground that makes an editor palette what it is rather than the near-black of the rest.
+Twenty-three themes ship, arranged on five shelves by what colour they commit to rather than by brightness. Material, Obsidian, Slate and Linen are neutral, where the greys are the design and the accent stays quiet. Ember, Citrine, Sakura and Vapor are warm. Nocturne, Aurora, Orchid and Terminal are cool. Prism, Duotone and Carnival are deliberately multicolour, joined by six semantic palettes: Neon Circuit, Sunset Drive, Ocean Glass, Royal Arcade, Forest Bloom and Paper Pop. Those six give backgrounds, panels, controls, selection, content accents and text their own coordinated colour directions. One Dark and Palenight are taken from code editors, and share the mid-toned ground that makes an editor palette what it is rather than the near-black of the rest.
 
 Every theme is available light or dark, or following Android's own setting including its schedule, because palettes are generated from a recipe rather than written down as a table of hex values — Ember light and Ember dark are the same recipe resolved against a different ground, so neither had to be drawn by hand and neither can drift from the other. Contrast is a real dial with four positions, held to a WCAG ratio rather than checked against one afterwards, so raising it moves text only as far as it has to go and the ground keeps its colour at every level. Colour intensity, accent hue shift, a pure-black mode for OLED panels, a hand-picked accent override, and Android's own dynamic colour are all available on top.
 
@@ -276,13 +320,13 @@ Interface sounds are a master switch with separate navigation and launch categor
 
 ### The theme editor
 
-If none of the fourteen is quite it, build your own. **Settings → Personalization → Theme editor** starts a theme from any of the built-in ones and hands over every number that theme was made from — not the adjustments over the top of it, but the recipe itself.
+If none of the twenty-three is quite it, build your own. **Settings → Personalization → Theme editor** starts a theme from any of the built-in ones and hands over the recipe itself.
 
 A **preview panel** sits at the top showing the theme as a small launcher — the grid, the information panel, the selection cursor and the section bar, all in the palette you are building. Every value in it is real, so a preview that looks wrong means the theme is wrong. It is there because the editor already applies what it is editing, which makes the launcher itself the truest preview, except for the parts hidden behind the settings page — and those are exactly the parts a palette has to be judged on.
 
-A **colour picker** is the main control: a spectrum you walk with Left and Right, or tap. The strip is drawn at the theme's own strength rather than at full saturation, so what you see on the bar is what the launcher will wear. Underneath it, Strength decides how colourful the theme is at all — from a grey launcher with a coloured cursor to one that leads with the colour. Then what the panels are made of, how round they are, how far the background graduates toward the colour, how it moves, and the wallpaper it pairs with.
+A full semantic palette replaces the old single-colour editor. Choose a harmony, primary accent and overall strength, then give the background, panels, buttons, selection, content details and text tint their own complementary directions. Category colour strength is independent as well. Every picker works with Left and Right or touch, every change is live, and text plus filled-control foregrounds are regenerated against contrast targets so a colourful theme cannot quietly make itself unreadable.
 
-That is the whole page, and deliberately so. A theme has about seven decisions in it; everything else — the second accent, the gradient's far end, the cursor's offset, how far the greys are tinted, the panel opacity and blur — is a *consequence* of those, and asking for each one separately means doing the palette generator's job by hand on a page long enough that the colour you came to change has scrolled off the top. Those values still exist, still travel in an exported theme, and are still rolled by **Randomise**, which rolls within the bands the built-in themes actually occupy so the result is always a theme rather than a muddy ground under a lurid accent.
+Material remains part of the same recipe: panel treatment, corners, background depth, motion and wallpaper. **Randomise** now rolls a coherent harmony and coordinated semantic roles rather than unrelated swatches. Old exported themes remain valid; roles they do not contain resolve through their original accent and neutral relationships.
 
 **Opening a theme applies it,** because a palette is the entire interface across both panels and no swatch in a settings row is a substitute for seeing it. Every slider moves the launcher you are looking at. Your themes appear in the same gallery as the built-in ones and are chosen the same way, and each can be renamed, duplicated and deleted; deleting the one in use falls back to the built-in theme underneath rather than leaving the launcher without a palette.
 
@@ -344,7 +388,7 @@ There are two recordings, and they capture different things, which is why they a
 
 Recording the launcher draws both panels into one video inside a dual-screen console body, saved to `Movies/Loki`. It records the launcher rather than the device, because Android only lets an app capture the default display, so a running game will not appear and there is no audio.
 
-Recording the screen mirrors the real display and keeps going into a game. It needs the platform's consent dialog and runs in a foreground service so it survives you leaving the launcher, and its notification carries the controls — as does the companion panel beside the game, and the panel Loki draws over it.
+Recording the screens captures the live top display and the live bottom display into one stacked video, including other apps on either panel. It needs the platform's consent dialog and Loki's accessibility service for the secondary-display frames, then runs its encoder and compositor in a foreground service so it survives you leaving the launcher. Its notification carries the controls — as does the companion panel beside the game, and the panel Loki draws over it. Android limits secondary-display accessibility frames to roughly three per second; the primary MediaProjection stream remains full frame rate.
 
 Either can carry sound, and the option is under System, in Recording. It records the **microphone**, which on a handheld is a hand's width from the speakers — so what lands on the clip is the game, and the room, and you. That is worth knowing before you rely on it.
 
@@ -408,6 +452,10 @@ There are also known limits worth stating plainly. Emulator package names drift 
 ./gradlew assembleRelease
 ./gradlew test
 ```
+
+That builds both applications. Loki lands at `app/build/outputs/apk/release/`, and Moonlight DS at `moonlightds/build/outputs/apk/release/` — or build one on its own with `:app:assembleRelease` or `:moonlightds:assembleRelease`.
+
+The two share their streaming code as source rather than as a published artefact, which is the reason they are one build and not two repositories. `:core:streaming` holds discovery, pairing, the session and the decoder; `:feature:stream` holds the interface. Neither knows which application is composing it, and both applications compile against every change to either.
 
 JDK 17, plus the NDK and CMake for the streaming core:
 

@@ -61,6 +61,7 @@ extern uint32_t EncryptionFeaturesEnabled;
 #define CTRL_CHANNEL_PEN          0x04
 #define CTRL_CHANNEL_TOUCH        0x05
 #define CTRL_CHANNEL_UTF8         0x06
+#define CTRL_CHANNEL_TOUCH_SECONDARY 0x07 // Keep unreliable touch sequencing independent per display
 #define CTRL_CHANNEL_GAMEPAD_BASE 0x10 // 0x10 to 0x1F by controller index
 #define CTRL_CHANNEL_SENSOR_BASE  0x20 // 0x20 to 0x2F by controller index
 #define CTRL_CHANNEL_COUNT        0x30
@@ -106,6 +107,22 @@ int gracefullyDisconnectEnetPeer(ENetHost* host, ENetPeer* peer, enet_uint32 lin
 int extractVersionQuadFromString(const char* string, int* quad);
 bool isReferenceFrameInvalidationSupportedByDecoder(void);
 bool isReferenceFrameInvalidationEnabled(void);
+
+/**
+ * @brief Queue an IDR request for a particular video stream.
+ *
+ * @param streamIndex Zero for the primary stream or one for the optional stream.
+ */
+void LiRequestIdrFrameForStream(uint8_t streamIndex);
+
+/**
+ * @brief Queue a lost-frame range for a particular video stream.
+ *
+ * @param streamIndex Zero for the primary stream or one for the optional stream.
+ * @param startFrame First lost frame number.
+ * @param endFrame Last lost frame number.
+ */
+void connectionDetectedFrameLossForStream(uint8_t streamIndex, uint32_t startFrame, uint32_t endFrame);
 void* extendBuffer(void* ptr, size_t newSize);
 
 void fixupMissingCallbacks(PDECODER_RENDERER_CALLBACKS* drCallbacks, PAUDIO_RENDERER_CALLBACKS* arCallbacks,

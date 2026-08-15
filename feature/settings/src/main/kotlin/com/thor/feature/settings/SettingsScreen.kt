@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.thor.feature.settings
 
 import androidx.compose.foundation.background
@@ -7,13 +9,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -221,6 +228,12 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .then(screenBackground)
+                // The gesture handle remains visible in immersive mode on the
+                // Thor. Keep the last settings row and its focus ring above it
+                // while allowing the background itself to continue to the edge.
+                .windowInsetsPadding(
+                    WindowInsets.navigationBarsIgnoringVisibility.only(WindowInsetsSides.Bottom),
+                )
                 .padding(if (couchMode) dimens.spacing else dimens.spacingSmall),
             horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
         ) {

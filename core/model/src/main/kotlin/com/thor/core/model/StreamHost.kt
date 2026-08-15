@@ -226,6 +226,37 @@ data class SessionQuality(
      */
     val bottomPanel: Boolean = true,
 
+    /**
+     * Whether the second screen shows the PC's second display instead.
+     *
+     * On by default for the Thor, and it outranks [bottomPanel] — the panel is one
+     * surface and cannot be a desktop and a trackpad at the same time.
+     *
+     * A request rather than a guarantee. It needs a host that implements the
+     * second video stream and has a display to give; a stock Sunshine refuses
+     * during RTSP and the panel silently keeps the trackpad, which is the right
+     * outcome and the reason this is safe to leave on.
+     *
+     * The trade is worth stating, because it is not free: turning this on costs
+     * the trackpad and the on-screen keyboard, which are the only way to type
+     * into a streamed desktop from this device. A second display is the better
+     * answer for *reading* something beside the game and the worse one for
+     * driving it.
+     */
+    val secondDisplay: Boolean = true,
+
+    /**
+     * The frame rate asked for on the second display.
+     *
+     * Separate from [fps], and much lower by default. What lands on that panel is
+     * a desktop rather than a game, and every frame spent there is bandwidth and
+     * encoder time taken from the screen actually being played on.
+     */
+    val secondDisplayFps: Int = 30,
+
+    /** Kilobits per second for the second display, budgeted separately from [bitrateKbps]. */
+    val secondDisplayBitrateKbps: Int = 5_000,
+
     /** Pointer speed on the trackpad, as a multiplier of finger movement. */
     val trackpadSpeed: Float = 1.5f,
 
@@ -239,11 +270,12 @@ data class SessionQuality(
      * Whether touching the video itself moves the pointer to that spot.
      *
      * Separate from the trackpad and useful for different things: this is
-     * pointing at what you can see, the trackpad is for precision. Off by
-     * default once the trackpad exists, because a stray touch while holding the
-     * handheld would otherwise fling the cursor across the screen.
+     * pointing at what you can see, the trackpad is for precision. On by default
+     * because both physical panels are touchscreens and direct pointing is the
+     * expected desktop behaviour; it can still be disabled for games where an
+     * accidental touch would be disruptive.
      */
-    val touchVideoAsPointer: Boolean = false,
+    val touchVideoAsPointer: Boolean = true,
 
     // ---- Controls ----------------------------------------------------------
 

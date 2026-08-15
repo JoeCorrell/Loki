@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The plate behind the mark.
+
+  Built the same way Loki's is — a dark ground with a soft bloom behind where the
+  screens sit, because a flat black square reads as a sticker and the light
+  spilling onto the plate is what makes it read as switched on.
+
+  The bloom is cooler and further up than Loki's. Cooler because this app is
+  named for moonlight and the two icons sit next to each other on the same
+  device, so they have to be told apart at a glance rather than on inspection.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF121A2B" />
+                <item android:offset="0.55" android:color="#FF0A0F1A" />
+                <item android:offset="1" android:color="#FF05070C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="40"
+                android:gradientRadius="48"
+                android:type="radial">
+                <item android:offset="0" android:color="#5978B4FF" />
+                <item android:offset="0.6" android:color="#1F78B4FF" />
+                <item android:offset="1" android:color="#0078B4FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

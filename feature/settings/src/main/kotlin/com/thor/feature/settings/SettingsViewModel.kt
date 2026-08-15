@@ -43,6 +43,7 @@ import kotlinx.coroutines.delay
 import java.util.UUID
 import com.thor.core.model.SurfaceStyle
 import com.thor.core.model.ThemeFile
+import com.thor.core.model.ThemeHarmony
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.sanitizeThemeName
@@ -1606,14 +1607,35 @@ class SettingsViewModel @Inject constructor(
      */
     fun randomiseEditedTheme() {
         updateEditedTheme { theme ->
+            val accent = (0 until 360).random().toFloat()
+            val harmony = ThemeHarmony.entries
+                .filterNot { it == ThemeHarmony.MONOCHROME }
+                .random()
+            val roles = when (harmony) {
+                ThemeHarmony.MONOCHROME -> listOf(0f, 0f, 0f)
+                ThemeHarmony.ANALOGOUS -> listOf(32f, -32f, 18f)
+                ThemeHarmony.COMPLEMENTARY -> listOf(180f, 0f, 180f)
+                ThemeHarmony.SPLIT -> listOf(150f, 210f, 0f)
+                ThemeHarmony.TRIADIC -> listOf(120f, 240f, 120f)
+                ThemeHarmony.TETRADIC -> listOf(90f, 180f, 270f)
+                ThemeHarmony.SPECTRUM -> listOf(120f, 210f, 300f)
+            }
             theme.copy(
-                accentHue = (0 until 360).random().toFloat(),
+                accentHue = accent,
                 // Above the neutral ceiling, so a roll always produces a theme
                 // that has committed to a colour.
                 accentChroma = randomIn(0.09f, 0.19f),
+                harmony = harmony,
+                tintChroma = randomIn(0.09f, 0.2f),
                 secondaryHueShift = randomIn(-60f, 60f),
                 accentSpread = randomIn(0f, 40f),
                 neutralChroma = randomIn(0.004f, 0.028f),
+                backgroundHue = (accent - 12f).mod(360f),
+                panelHue = (accent + 12f).mod(360f),
+                controlHue = (accent + roles[0]).mod(360f),
+                selectionHue = (accent + roles[1]).mod(360f),
+                contentHue = (accent + roles[2]).mod(360f),
+                textHue = (accent + 8f).mod(360f),
                 groundShift = if ((0..3).random() == 0) randomIn(0.08f, 0.22f) else 0f,
                 surfaceStyle = SurfaceStyle.entries.random(),
                 cornerRadiusDp = listOf(0, 4, 8, 14, 20, 28).random(),

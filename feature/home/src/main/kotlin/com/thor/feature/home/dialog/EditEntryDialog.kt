@@ -60,7 +60,7 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.ThorDropdownItem
-import com.thor.core.ui.component.ThorDropdownMenu
+import com.thor.core.ui.component.ThorDropdownAnchor
 import com.thor.core.ui.input.ThorInputField
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
@@ -443,8 +443,12 @@ private fun PickerRow(
     // from the read-only facts above it.
     val hover = rememberPointerHover()
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    ThorDropdownAnchor(
+        expanded = expanded,
+        onDismissRequest = { expanded = false },
+        modifier = Modifier.fillMaxWidth(),
+        anchor = {
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .pointerHover(hover)
@@ -478,9 +482,9 @@ private fun PickerRow(
                 tint = colors.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
-        }
-
-        ThorDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            }
+        },
+    ) {
             options.forEach { (id, optionLabel) ->
                 ThorDropdownItem(
                     label = optionLabel,
@@ -491,7 +495,6 @@ private fun PickerRow(
                     },
                 )
             }
-        }
     }
 }
 

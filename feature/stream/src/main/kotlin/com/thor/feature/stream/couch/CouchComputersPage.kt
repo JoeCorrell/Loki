@@ -53,7 +53,7 @@ import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
-import com.thor.data.stream.PairingState
+import com.thor.core.streaming.PairingState
 import com.thor.feature.stream.selectedHostMessage
 import com.thor.feature.stream.StreamActionButton
 import com.thor.feature.stream.streamActionLabel

@@ -1,4 +1,5 @@
 #include "Limelight-internal.h"
+#include "SecondStream.h"
 
 static int stage = STAGE_NONE;
 static ConnListenerConnectionTerminated originalTerminationCallback;
@@ -73,6 +74,11 @@ void LiStopConnection(void) {
     // Set the interrupted flag
     LiInterruptConnection();
 
+    // The optional stream owns lifecycle state outside the primary stage
+    // counter. Always ask it to clean up, even after it reported an asynchronous
+    // failure and no longer qualifies as "active".
+    LiStopSecondDisplayStream();
+
     if (stage == STAGE_INPUT_STREAM_START) {
         Limelog("Stopping input stream...");
         stopInputStream();
@@ -131,6 +137,9 @@ void LiStopConnection(void) {
     }
     if (stage == STAGE_PLATFORM_INIT) {
         Limelog("Cleaning up platform...");
+        // The optional pipeline's lifecycle mutex is a platform primitive and
+        // must be released before cleanupPlatform() checks for leaked objects.
+        LiDestroySecondDisplayState();
         cleanupPlatform();
         stage--;
         Limelog("done\n");
@@ -401,6 +410,11 @@ int LiStartConnection(PSERVER_INFORMATION serverInfo, PSTREAM_CONFIGURATION stre
         }
     }
 
+    // The request is armed before startConnection(), when StreamConfig may
+    // still describe a prior session. Merge current packet size, encryption
+    // keys, codec support, and colour settings only after normalization above.
+    LiPrepareSecondDisplay();
+
     Limelog("Initializing audio stream...");
     ListenerCallbacks.stageStarting(STAGE_AUDIO_STREAM_INIT);
     err = initializeAudioStream();
@@ -507,6 +521,25 @@ int LiStartConnection(PSERVER_INFORMATION serverInfo, PSTREAM_CONFIGURATION stre
     LC_ASSERT(stage == STAGE_INPUT_STREAM_START);
     ListenerCallbacks.stageComplete(STAGE_INPUT_STREAM_START);
     Limelog("done\n");
+
+    /*
+     * Start the optional stream last. It has no primary stage of its own: any
+     * setup failure must leave control, input, audio, and stream zero running.
+     * A separate local error is load-bearing here; reusing `err` would reach the
+     * common Cleanup label with a nonzero value and tear down the whole session.
+     */
+    if (LiIsSecondDisplayNegotiated()) {
+        int secondErr;
+
+        Limelog("Starting second display stream...");
+        secondErr = LiStartSecondDisplayStream(renderContext, drFlags);
+        if (secondErr != 0) {
+            Limelog("failed: %d. Continuing with one display.\n", secondErr);
+        }
+        else {
+            Limelog("done\n");
+        }
+    }
     
     // Wiggle the mouse a bit to wake the display up
     LiSendMouseMoveEvent(1, 1);

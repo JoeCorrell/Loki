@@ -38,7 +38,7 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.input.ThorInputField
-import com.thor.data.stream.PairingState
+import com.thor.core.streaming.PairingState
 import com.thor.feature.stream.ADDRESS_FIELD_ID
 import com.thor.feature.stream.SELECTED_PANEL_WEIGHT
 import com.thor.feature.stream.selectedHostMessage

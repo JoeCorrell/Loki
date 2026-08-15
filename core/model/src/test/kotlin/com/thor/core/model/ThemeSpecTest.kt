@@ -215,6 +215,18 @@ class ThemeSpecTest {
     }
 
     @Test
+    fun `semantic filled roles always choose readable foregrounds`() {
+        forEveryPalette { spec, label ->
+            assertWithMessage("button content, $label")
+                .that(Oklch.contrastRatio(spec.onControlArgb, spec.controlArgb))
+                .isAtLeast(MIN_BODY_CONTRAST)
+            assertWithMessage("selected content, $label")
+                .that(Oklch.contrastRatio(spec.onSelectionArgb, spec.selectionArgb))
+                .isAtLeast(MIN_BODY_CONTRAST)
+        }
+    }
+
+    @Test
     fun `muted text clears the large-text bar on every palette`() {
         // Muted text is where contrast is usually lost: it is the metadata on the
         // information panel, so it has to clear the large-text bar at minimum.
@@ -620,7 +632,7 @@ class ThemeSpecTest {
             ThemeFamily.NEUTRAL to 4,
             ThemeFamily.WARM to 4,
             ThemeFamily.COOL to 4,
-            ThemeFamily.MULTI to 3,
+            ThemeFamily.MULTI to 9,
             ThemeFamily.EDITOR to 2,
         )
 

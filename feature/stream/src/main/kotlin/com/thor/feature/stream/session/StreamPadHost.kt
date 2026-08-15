@@ -21,9 +21,10 @@ import com.thor.core.model.DualScreenMode
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SessionQuality
-import com.thor.data.stream.StreamPad
+import com.thor.core.streaming.StreamPad
 import com.thor.feature.stream.panel.StreamPadPanel
 import com.thor.feature.stream.panel.StreamPanelController
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Puts the trackpad and keyboard on the second screen for as long as a stream is
@@ -44,6 +45,14 @@ fun StreamPadHost(
     controller: StreamPanelController,
     /** Where the panel's theme comes from; see the theme scope below. */
     settings: SettingsRepository,
+    /**
+     * Where this window publishes its surface when the panel is a second display.
+     *
+     * Null keeps the panel as the trackpad, which is what it has always been.
+     * Non-null does not by itself mean a second display happens — the host still
+     * has to agree — but it is what lets the session ask.
+     */
+    secondDisplaySurface: SecondDisplaySurface? = null,
 ) {
     val context = LocalContext.current
     var displayId by remember { mutableStateOf(secondaryDisplayId(context)) }
@@ -91,6 +100,9 @@ fun StreamPadHost(
 
     SecondaryDisplay(
         displayId = displayId,
+        // This window belongs to the stream activity, not to the launcher. Home
+        // or a task switch must therefore remove it with the primary window.
+        keepVisibleWhileStopped = false,
         /*
          * Every term read inside the lambda, none of them captured outside it.
          *
@@ -118,7 +130,12 @@ fun StreamPadHost(
                         settingsNow.couchOnExternalDisplay &&
                         monitorAttached
                     )
-            quality.bottomPanel && !couchMode && displayId != null
+            // A second display keeps this window up on its own account, even
+            // with the trackpad switched off: the panel is showing the PC rather
+            // than a control surface, so `bottomPanel` has nothing to say about
+            // whether it should exist.
+            val wanted = quality.bottomPanel || quality.secondDisplay
+            wanted && !couchMode && displayId != null
         },
         /*
          * Never takes focus, and this is the important line in the file.
@@ -172,7 +189,33 @@ fun StreamPadHost(
             accessibility = accessibility,
             performance = performance,
         ) {
-            StreamPadPanel(pad = pad, quality = quality, controller = controller)
+            /*
+             * The panel is either the PC's second screen or the trackpad, never
+             * both — it is one surface, and a desktop drawn under a trackpad
+             * would be a picture nobody can see behind controls that cannot be
+             * reached.
+             *
+             * The choice is made from the setting rather than from whether the
+             * host agreed, and that is deliberate. The surface has to exist
+             * *before* the session starts in order to be offered at all, so it
+             * cannot wait on an answer that only arrives afterwards. A host that
+             * declines leaves this drawing an empty surface, and
+             * `StreamSessionActivity` swaps it back to the trackpad once it
+             * knows — one frame of black rather than a trackpad that flickers
+             * away and returns.
+             */
+            val secondDisplayActive by (secondDisplaySurface?.active
+                ?: MutableStateFlow(false)).collectAsState()
+
+            if (secondDisplaySurface != null && quality.secondDisplay && secondDisplayActive) {
+                SecondDisplayPanel(
+                    surface = secondDisplaySurface,
+                    quality = quality,
+                    controller = controller,
+                )
+            } else {
+                StreamPadPanel(pad = pad, quality = quality, controller = controller)
+            }
         }
     }
 }
@@ -190,6 +233,37 @@ private fun secondaryDisplayId(context: Context): Int? {
         .firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
         ?.displayId
 }
+
+/**
+ * The second panel's size in real pixels, for the mode a second display asks for.
+ *
+ * Real metrics rather than the ones the window would report: this is what the
+ * host should encode, and a size reduced by insets or by the app's own window
+ * would have the PC render a desktop smaller than the screen it lands on.
+ *
+ * Falls back to the default display when there is no second panel. Nothing uses
+ * the answer in that case — with no panel there is no surface, so no second
+ * display is ever requested — but returning zeroes would put a zero into a
+ * session config, and a plausible number is safer than one that cannot be valid.
+ */
+internal fun secondaryDisplayMetrics(context: Context): Pair<Int, Int> {
+    val manager = context.getSystemService(DisplayManager::class.java)
+    val display = manager?.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+        ?.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+        ?: manager?.getDisplay(Display.DEFAULT_DISPLAY)
+        ?: return DEFAULT_PANEL_WIDTH to DEFAULT_PANEL_HEIGHT
+
+    @Suppress("DEPRECATION")
+    val metrics = android.util.DisplayMetrics().also { display.getRealMetrics(it) }
+    return if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+        metrics.widthPixels to metrics.heightPixels
+    } else {
+        DEFAULT_PANEL_WIDTH to DEFAULT_PANEL_HEIGHT
+    }
+}
+
+private const val DEFAULT_PANEL_WIDTH = 1920
+private const val DEFAULT_PANEL_HEIGHT = 1080
 
 /**
  * Whether a screen is attached beyond the two the device was built with.

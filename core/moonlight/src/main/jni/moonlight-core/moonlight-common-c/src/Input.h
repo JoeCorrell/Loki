@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #pragma pack(push, 1)
@@ -51,7 +52,8 @@ typedef struct _NV_ABS_MOUSE_MOVE_PACKET {
     short x;
     short y;
 
-    short unused;
+    // Sunshine DS extension. Zero retains the legacy primary-display meaning.
+    uint16_t displayIndex;
 
     // Used on the server-side as a reference to scale x and y
     // to screen coordinates.
@@ -127,7 +129,8 @@ typedef struct _SS_HSCROLL_PACKET {
 typedef struct _SS_TOUCH_PACKET {
     NV_INPUT_HEADER header;
     uint8_t eventType;
-    uint8_t zero[1]; // Alignment/reserved
+    // Sunshine DS uses the formerly reserved byte as a display index.
+    uint8_t displayIndex;
     uint16_t rotation;
     uint32_t pointerId;
     netfloat x;
@@ -196,3 +199,26 @@ typedef struct _SS_CONTROLLER_BATTERY_PACKET {
 } SS_CONTROLLER_BATTERY_PACKET, *PSS_CONTROLLER_BATTERY_PACKET;
 
 #pragma pack(pop)
+
+// These reserved-field offsets are the dual-display wire contract. Fail the
+// build if a compiler or later edit changes them without a coordinated host
+// protocol update.
+#if defined(__cplusplus)
+static_assert(offsetof(NV_ABS_MOUSE_MOVE_PACKET, displayIndex) == 12,
+              "absolute mouse display index moved on the wire");
+static_assert(sizeof(NV_ABS_MOUSE_MOVE_PACKET) == 18,
+              "absolute mouse packet size changed on the wire");
+static_assert(offsetof(SS_TOUCH_PACKET, displayIndex) == 9,
+              "touch display index moved on the wire");
+static_assert(sizeof(SS_TOUCH_PACKET) == 36,
+              "touch packet size changed on the wire");
+#else
+_Static_assert(offsetof(NV_ABS_MOUSE_MOVE_PACKET, displayIndex) == 12,
+               "absolute mouse display index moved on the wire");
+_Static_assert(sizeof(NV_ABS_MOUSE_MOVE_PACKET) == 18,
+               "absolute mouse packet size changed on the wire");
+_Static_assert(offsetof(SS_TOUCH_PACKET, displayIndex) == 9,
+               "touch display index moved on the wire");
+_Static_assert(sizeof(SS_TOUCH_PACKET) == 36,
+               "touch packet size changed on the wire");
+#endif

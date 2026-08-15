@@ -34,6 +34,9 @@ class CustomThemeTest {
             assertWithMessage("$message accent hue").that(copy.accentHue).isEqualTo(recipe.accentHue)
             assertWithMessage("$message accent chroma")
                 .that(copy.accentChroma).isEqualTo(recipe.accentChroma)
+            assertWithMessage("$message harmony").that(copy.harmony).isEqualTo(recipe.harmony)
+            assertWithMessage("$message tint chroma")
+                .that(copy.tintChroma).isEqualTo(recipe.tintChroma)
             assertWithMessage("$message secondary")
                 .that(copy.secondaryHueShift).isEqualTo(recipe.secondaryHueShift)
             assertWithMessage("$message spread")
@@ -44,6 +47,14 @@ class CustomThemeTest {
                 .that(copy.neutralHue).isEqualTo(recipe.neutralHue)
             assertWithMessage("$message grey chroma")
                 .that(copy.neutralChroma).isEqualTo(recipe.neutralChroma)
+            assertWithMessage("$message background hue")
+                .that(copy.backgroundHue).isEqualTo(recipe.backgroundHue)
+            assertWithMessage("$message panel hue").that(copy.panelHue).isEqualTo(recipe.panelHue)
+            assertWithMessage("$message control hue").that(copy.controlHue).isEqualTo(recipe.controlHue)
+            assertWithMessage("$message selection hue")
+                .that(copy.selectionHue).isEqualTo(recipe.selectionHue)
+            assertWithMessage("$message text hue").that(copy.textHue).isEqualTo(recipe.textHue)
+            assertWithMessage("$message content hue").that(copy.contentHue).isEqualTo(recipe.contentHue)
             assertWithMessage("$message ground shift")
                 .that(copy.groundShift).isEqualTo(recipe.groundShift)
             assertWithMessage("$message corner radius")
@@ -92,6 +103,13 @@ class CustomThemeTest {
             cursorHueShift = 5_000f,
             neutralHue = -720f,
             neutralChroma = -3f,
+            tintChroma = 400f,
+            backgroundHue = -810f,
+            panelHue = 901f,
+            controlHue = -721f,
+            selectionHue = 1_441f,
+            textHue = -90f,
+            contentHue = 999f,
             groundShift = 99f,
             cornerRadiusDp = -50,
             surfaceAlpha = 12f,
@@ -104,11 +122,20 @@ class CustomThemeTest {
 
         recipe.accentHue.assertWithin("accent hue", 0f..360f)
         recipe.neutralHue.assertWithin("grey hue", 0f..360f)
+        listOfNotNull(
+            recipe.backgroundHue,
+            recipe.panelHue,
+            recipe.controlHue,
+            recipe.selectionHue,
+            recipe.textHue,
+            recipe.contentHue,
+        ).forEach { it.assertWithin("semantic hue", 0f..360f) }
         recipe.accentChroma.assertWithin("accent chroma", CustomTheme.ACCENT_CHROMA)
         recipe.secondaryHueShift.assertWithin("secondary", CustomTheme.HUE_OFFSET)
         recipe.accentSpread.assertWithin("spread", CustomTheme.ACCENT_SPREAD)
         recipe.cursorHueShift.assertWithin("cursor", CustomTheme.HUE_OFFSET)
         recipe.neutralChroma.assertWithin("grey chroma", CustomTheme.NEUTRAL_CHROMA)
+        recipe.tintChroma.assertWithin("tint chroma", CustomTheme.TINT_CHROMA)
         recipe.groundShift.assertWithin("ground shift", CustomTheme.GROUND_SHIFT)
         recipe.material.surfaceAlpha.assertWithin("alpha", CustomTheme.SURFACE_ALPHA)
         recipe.material.grain.assertWithin("grain", CustomTheme.GRAIN)
@@ -310,6 +337,14 @@ class CustomThemeTest {
             name = "Warm Paper",
             accentHue = 64f,
             accentChroma = 0.13f,
+            harmony = ThemeHarmony.TRIADIC,
+            tintChroma = 0.18f,
+            backgroundHue = 245f,
+            panelHue = 275f,
+            controlHue = 64f,
+            selectionHue = 185f,
+            textHue = 220f,
+            contentHue = 330f,
             surfaceStyle = SurfaceStyle.GLASS,
             cornerRadiusDp = 4,
             motion = MotionStyle.MECHANICAL,

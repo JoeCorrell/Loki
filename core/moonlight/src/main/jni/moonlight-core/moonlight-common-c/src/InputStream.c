@@ -12,8 +12,11 @@ static LINKED_BLOCKING_QUEUE packetQueue;
 static LINKED_BLOCKING_QUEUE packetHolderFreeList;
 static PLT_THREAD inputSendThread;
 
-static float absCurrentPosX;
-static float absCurrentPosY;
+// This fork exposes two independently addressable streamed displays.
+#define MAX_INPUT_DISPLAYS 2
+
+static float absCurrentPosX[MAX_INPUT_DISPLAYS];
+static float absCurrentPosY[MAX_INPUT_DISPLAYS];
 
 // Limited by number of bits in activeGamepadMask
 #define MAX_GAMEPADS 16
@@ -36,7 +39,7 @@ static struct {
     int x, y;
     int width, height;
     bool dirty; // Update ready to send (queued packet holder in packetQueue)
-} currentAbsoluteMouseState;
+} currentAbsoluteMouseState[MAX_INPUT_DISPLAYS];
 
 #define CLAMP(val, min, max) (((val) < (min)) ? (min) : (((val) > (max)) ? (max) : (val)))
 
@@ -116,11 +119,13 @@ int initializeInputStream(void) {
     currentPenButtonState = 0;
 
     // Start with the virtual mouse centered
-    absCurrentPosX = absCurrentPosY = 0.5f;
+    for (int i = 0; i < MAX_INPUT_DISPLAYS; i++) {
+        absCurrentPosX[i] = absCurrentPosY[i] = 0.5f;
+    }
 
     memset(currentGamepadSensorState, 0, sizeof(currentGamepadSensorState));
     memset(&currentRelativeMouseState, 0, sizeof(currentRelativeMouseState));
-    memset(&currentAbsoluteMouseState, 0, sizeof(currentAbsoluteMouseState));
+    memset(currentAbsoluteMouseState, 0, sizeof(currentAbsoluteMouseState));
     PltCreateMutex(&batchedInputMutex);
 
     return 0;
@@ -336,7 +341,7 @@ static void inputSendThreadProc(void* context) {
     }
 
     uint64_t lastControllerPacketTime[MAX_GAMEPADS] = { 0 };
-    uint64_t lastMousePacketTime = 0;
+    uint64_t lastMousePacketTime[MAX_INPUT_DISPLAYS] = { 0 };
     uint64_t lastPenPacketTime = 0;
 
     while (!PltIsThreadInterrupted(&inputSendThread)) {
@@ -413,9 +418,9 @@ static void inputSendThreadProc(void* context) {
             uint64_t now = PltGetMillis();
 
             // Delay for batching if required
-            if (now < lastMousePacketTime + MOUSE_BATCHING_INTERVAL_MS) {
+            if (now < lastMousePacketTime[0] + MOUSE_BATCHING_INTERVAL_MS) {
                 flushInputOnControlStream();
-                PltSleepMs((int)(lastMousePacketTime + MOUSE_BATCHING_INTERVAL_MS - now));
+                PltSleepMs((int)(lastMousePacketTime[0] + MOUSE_BATCHING_INTERVAL_MS - now));
                 now = PltGetMillis();
             }
 
@@ -472,7 +477,7 @@ static void inputSendThreadProc(void* context) {
 
             PltUnlockMutex(&batchedInputMutex);
 
-            lastMousePacketTime = now;
+            lastMousePacketTime[0] = now;
 
             // We sent everything we needed in the loop above, so we can just free the
             // holder of the original packet and wait for another input event.
@@ -481,35 +486,42 @@ static void inputSendThreadProc(void* context) {
         }
         // If it's an absolute mouse move packet, we should only send the latest
         else if (holder->packet.header.magic == LE32(MOUSE_MOVE_ABS_MAGIC)) {
+            uint16_t displayIndex = BE16(holder->packet.mouseMoveAbs.displayIndex);
             uint64_t now = PltGetMillis();
 
+            if (displayIndex >= MAX_INPUT_DISPLAYS) {
+                LC_ASSERT(displayIndex < MAX_INPUT_DISPLAYS);
+                freePacketHolder(holder);
+                continue;
+            }
+
             // Delay for batching if required
-            if (now < lastMousePacketTime + MOUSE_BATCHING_INTERVAL_MS) {
+            if (now < lastMousePacketTime[displayIndex] + MOUSE_BATCHING_INTERVAL_MS) {
                 flushInputOnControlStream();
-                PltSleepMs((int)(lastMousePacketTime + MOUSE_BATCHING_INTERVAL_MS - now));
+                PltSleepMs((int)(lastMousePacketTime[displayIndex] + MOUSE_BATCHING_INTERVAL_MS - now));
                 now = PltGetMillis();
             }
 
             PltLockMutex(&batchedInputMutex);
 
             // Populate the packet with the latest state
-            holder->packet.mouseMoveAbs.x = BE16(currentAbsoluteMouseState.x);
-            holder->packet.mouseMoveAbs.y = BE16(currentAbsoluteMouseState.y);
+            holder->packet.mouseMoveAbs.x = BE16(currentAbsoluteMouseState[displayIndex].x);
+            holder->packet.mouseMoveAbs.y = BE16(currentAbsoluteMouseState[displayIndex].y);
 
             // There appears to be a rounding error in GFE's scaling calculation which prevents
             // the cursor from reaching the far edge of the screen when streaming at smaller
             // resolutions with a higher desktop resolution (like streaming 720p with a desktop
             // resolution of 1080p, or streaming 720p/1080p with a desktop resolution of 4K).
             // Subtracting one from the reference dimensions seems to work around this issue.
-            holder->packet.mouseMoveAbs.width = BE16(currentAbsoluteMouseState.width - 1);
-            holder->packet.mouseMoveAbs.height = BE16(currentAbsoluteMouseState.height - 1);
+            holder->packet.mouseMoveAbs.width = BE16(currentAbsoluteMouseState[displayIndex].width - 1);
+            holder->packet.mouseMoveAbs.height = BE16(currentAbsoluteMouseState[displayIndex].height - 1);
 
             // The state change is no longer pending
-            currentAbsoluteMouseState.dirty = false;
+            currentAbsoluteMouseState[displayIndex].dirty = false;
 
             PltUnlockMutex(&batchedInputMutex);
 
-            lastMousePacketTime = now;
+            lastMousePacketTime[displayIndex] = now;
         }
         // If it's a pen packet, we should only send the latest move or hover events
         else if (holder->packet.header.magic == LE32(SS_PEN_MAGIC) && TOUCH_EVENT_IS_BATCHABLE(holder->packet.pen.eventType)) {
@@ -812,25 +824,29 @@ int LiSendMouseMoveEvent(short deltaX, short deltaY) {
     return err;
 }
 
-// Send a mouse position update to the streaming machine
-int LiSendMousePositionEvent(short x, short y, short referenceWidth, short referenceHeight) {
+// Send a mouse position update to one display on the streaming machine.
+int LiSendMousePositionEventForDisplay(short x, short y, short referenceWidth, short referenceHeight,
+                                       uint16_t displayIndex) {
     PPACKET_HOLDER holder;
     int err;
 
     if (!initialized) {
         return -2;
     }
+    if (displayIndex >= MAX_INPUT_DISPLAYS || referenceWidth <= 0 || referenceHeight <= 0) {
+        return -3;
+    }
 
     PltLockMutex(&batchedInputMutex);
 
     // Overwrite the previous mouse location with the new one
-    currentAbsoluteMouseState.x = x;
-    currentAbsoluteMouseState.y = y;
-    currentAbsoluteMouseState.width = referenceWidth;
-    currentAbsoluteMouseState.height = referenceHeight;
+    currentAbsoluteMouseState[displayIndex].x = x;
+    currentAbsoluteMouseState[displayIndex].y = y;
+    currentAbsoluteMouseState[displayIndex].width = referenceWidth;
+    currentAbsoluteMouseState[displayIndex].height = referenceHeight;
 
     // Queue a packet holder if this is the only pending absolute mouse event
-    if (!currentAbsoluteMouseState.dirty) {
+    if (!currentAbsoluteMouseState[displayIndex].dirty) {
         holder = allocatePacketHolder(0);
         if (holder == NULL) {
             PltUnlockMutex(&batchedInputMutex);
@@ -844,13 +860,13 @@ int LiSendMousePositionEvent(short x, short y, short referenceWidth, short refer
 
         holder->packet.mouseMoveAbs.header.size = BE32(sizeof(NV_ABS_MOUSE_MOVE_PACKET) - sizeof(uint32_t));
         holder->packet.mouseMoveAbs.header.magic = LE32(MOUSE_MOVE_ABS_MAGIC);
-        holder->packet.mouseMoveAbs.unused = 0;
+        holder->packet.mouseMoveAbs.displayIndex = BE16(displayIndex);
 
         // Remaining fields are set in the input thread based on the latest currentAbsoluteMouseState values
 
         err = LbqOfferQueueItem(&packetQueue, holder, &holder->entry);
         if (err == LBQ_SUCCESS) {
-            currentAbsoluteMouseState.dirty = true;
+            currentAbsoluteMouseState[displayIndex].dirty = true;
         }
         else {
             LC_ASSERT(err == LBQ_BOUND_EXCEEDED);
@@ -869,21 +885,48 @@ int LiSendMousePositionEvent(short x, short y, short referenceWidth, short refer
     // use LiSendRelativeMotionAsMousePositionEvent() must not mix these function
     // without synchronization (otherwise the state of the cursor on the host is
     // undefined anyway).
-    absCurrentPosX = CLAMP(x, 0, referenceWidth - 1) / (float)(referenceWidth - 1);
-    absCurrentPosY = CLAMP(y, 0, referenceHeight - 1) / (float)(referenceHeight - 1);
+    if (referenceWidth > 1) {
+        absCurrentPosX[displayIndex] = CLAMP(x, 0, referenceWidth - 1) / (float)(referenceWidth - 1);
+    }
+    else {
+        absCurrentPosX[displayIndex] = 0.0f;
+    }
+    if (referenceHeight > 1) {
+        absCurrentPosY[displayIndex] = CLAMP(y, 0, referenceHeight - 1) / (float)(referenceHeight - 1);
+    }
+    else {
+        absCurrentPosY[displayIndex] = 0.0f;
+    }
 
     return err;
 }
 
-// Send a relative motion event using absolute position to the streaming machine
-int LiSendMouseMoveAsMousePositionEvent(short deltaX, short deltaY, short referenceWidth, short referenceHeight) {
-    // Convert the current position to be relative to the provided reference dimensions
-    short oldPositionX = (short)(absCurrentPosX * referenceWidth);
-    short oldPositionY = (short)(absCurrentPosY * referenceHeight);
+// Send a legacy primary-display mouse position update.
+int LiSendMousePositionEvent(short x, short y, short referenceWidth, short referenceHeight) {
+    return LiSendMousePositionEventForDisplay(x, y, referenceWidth, referenceHeight, 0);
+}
 
-    return LiSendMousePositionEvent(CLAMP(oldPositionX + deltaX, 0, referenceWidth),
-                                    CLAMP(oldPositionY + deltaY, 0, referenceHeight),
-                                    referenceWidth, referenceHeight);
+// Send a relative motion event using an absolute position on one display.
+int LiSendMouseMoveAsMousePositionEventForDisplay(short deltaX, short deltaY,
+                                                  short referenceWidth, short referenceHeight,
+                                                  uint16_t displayIndex) {
+    if (displayIndex >= MAX_INPUT_DISPLAYS || referenceWidth <= 0 || referenceHeight <= 0) {
+        return -3;
+    }
+
+    // Convert the current position to be relative to the provided reference dimensions
+    short oldPositionX = (short)(absCurrentPosX[displayIndex] * referenceWidth);
+    short oldPositionY = (short)(absCurrentPosY[displayIndex] * referenceHeight);
+
+    return LiSendMousePositionEventForDisplay(CLAMP(oldPositionX + deltaX, 0, referenceWidth),
+                                              CLAMP(oldPositionY + deltaY, 0, referenceHeight),
+                                              referenceWidth, referenceHeight, displayIndex);
+}
+
+// Send a legacy primary-display relative motion event using absolute position.
+int LiSendMouseMoveAsMousePositionEvent(short deltaX, short deltaY, short referenceWidth, short referenceHeight) {
+    return LiSendMouseMoveAsMousePositionEventForDisplay(deltaX, deltaY,
+                                                         referenceWidth, referenceHeight, 0);
 }
 
 // Send a mouse button event to the streaming machine
@@ -1301,8 +1344,9 @@ int LiSendHScrollEvent(signed char scrollClicks) {
     return LiSendHighResHScrollEvent(scrollClicks * LI_WHEEL_DELTA);
 }
 
-int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, float pressureOrDistance,
-                     float contactAreaMajor, float contactAreaMinor, uint16_t rotation) {
+int LiSendTouchEventForDisplay(uint8_t eventType, uint32_t pointerId, float x, float y,
+                               float pressureOrDistance, float contactAreaMajor,
+                               float contactAreaMinor, uint16_t rotation, uint8_t displayIndex) {
     PPACKET_HOLDER holder;
     int err;
 
@@ -1314,13 +1358,16 @@ int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, fl
     if (!(SunshineFeatureFlags & LI_FF_PEN_TOUCH_EVENTS)) {
         return LI_ERR_UNSUPPORTED;
     }
+    if (displayIndex >= MAX_INPUT_DISPLAYS) {
+        return -3;
+    }
 
     holder = allocatePacketHolder(0);
     if (holder == NULL) {
         return -1;
     }
 
-    holder->channelId = CTRL_CHANNEL_TOUCH;
+    holder->channelId = displayIndex == 0 ? CTRL_CHANNEL_TOUCH : CTRL_CHANNEL_TOUCH_SECONDARY;
 
     // Allow move and hover events to be dropped if a newer one arrives, but don't allow
     // state changing events like up/down/leave events to be dropped.
@@ -1331,7 +1378,7 @@ int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, fl
     holder->packet.touch.eventType = eventType;
     holder->packet.touch.pointerId = LE32(pointerId);
     holder->packet.touch.rotation = LE16(rotation);
-    memset(holder->packet.touch.zero, 0, sizeof(holder->packet.touch.zero));
+    holder->packet.touch.displayIndex = displayIndex;
     floatToNetfloat(x, holder->packet.touch.x);
     floatToNetfloat(y, holder->packet.touch.y);
     floatToNetfloat(pressureOrDistance, holder->packet.touch.pressureOrDistance);
@@ -1346,6 +1393,12 @@ int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, fl
     }
 
     return err;
+}
+
+int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, float pressureOrDistance,
+                     float contactAreaMajor, float contactAreaMinor, uint16_t rotation) {
+    return LiSendTouchEventForDisplay(eventType, pointerId, x, y, pressureOrDistance,
+                                      contactAreaMajor, contactAreaMinor, rotation, 0);
 }
 
 int LiSendPenEvent(uint8_t eventType, uint8_t toolType, uint8_t penButtons,

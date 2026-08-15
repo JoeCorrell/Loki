@@ -124,9 +124,9 @@ public class MoonBridge {
 
     public static final byte LI_BATTERY_PERCENTAGE_UNKNOWN = (byte)0xFF;
 
-    private static AudioRenderer audioRenderer;
-    private static VideoDecoderRenderer videoRenderer;
-    private static NvConnectionListener connectionListener;
+    private static volatile AudioRenderer audioRenderer;
+    private static volatile VideoDecoderRenderer videoRenderer;
+    private static volatile NvConnectionListener connectionListener;
 
     static {
         System.loadLibrary("moonlight-core");
@@ -326,17 +326,129 @@ public class MoonBridge {
         }
     }
 
+    // The second display's decoder. Native video threads read this while the UI
+    // may detach a Surface, so visibility between those threads is required.
+    private static volatile VideoDecoderRenderer videoRenderer2;
+
+    public static int bridgeDr2Setup(int videoFormat, int width, int height, int redrawRate) {
+        VideoDecoderRenderer renderer = videoRenderer2;
+        if (renderer != null) {
+            return renderer.setup(videoFormat, width, height, redrawRate);
+        }
+        else {
+            return -1;
+        }
+    }
+
+    public static void bridgeDr2Start() {
+        VideoDecoderRenderer renderer = videoRenderer2;
+        if (renderer != null) {
+            renderer.start();
+        }
+    }
+
+    public static void bridgeDr2Stop() {
+        VideoDecoderRenderer renderer = videoRenderer2;
+        if (renderer != null) {
+            renderer.stop();
+        }
+    }
+
+    public static void bridgeDr2Cleanup() {
+        VideoDecoderRenderer renderer = videoRenderer2;
+        if (renderer != null) {
+            renderer.cleanup();
+        }
+    }
+
+    public static int bridgeDr2SubmitDecodeUnit(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
+                                                int frameNumber, int frameType, char frameHostProcessingLatency,
+                                                long receiveTimeMs, long enqueueTimeMs) {
+        VideoDecoderRenderer renderer = videoRenderer2;
+        if (renderer != null) {
+            return renderer.submitDecodeUnit(decodeUnitData, decodeUnitLength,
+                    decodeUnitType, frameNumber, frameType, frameHostProcessingLatency, receiveTimeMs, enqueueTimeMs);
+        }
+        else {
+            return DR_OK;
+        }
+    }
+
+    /** Called by native code when only the optional video stream changes state. */
+    public static void bridgeClSecondDisplayStatusChanged(boolean active, int errorCode) {
+        NvConnectionListener listener = connectionListener;
+        if (listener != null) {
+            listener.secondDisplayStatusChanged(active, errorCode);
+        }
+    }
+
     public static void setupBridge(VideoDecoderRenderer videoRenderer, AudioRenderer audioRenderer, NvConnectionListener connectionListener) {
         MoonBridge.videoRenderer = videoRenderer;
         MoonBridge.audioRenderer = audioRenderer;
         MoonBridge.connectionListener = connectionListener;
     }
 
-    public static void cleanupBridge() {
-        MoonBridge.videoRenderer = null;
-        MoonBridge.audioRenderer = null;
-        MoonBridge.connectionListener = null;
+    /**
+     * Arms the second display, before startConnection.
+     *
+     * The dimensions are the client's *second* panel rather than the first: the
+     * whole point of the feature is that the two screens differ. Whether a second
+     * stream actually runs is decided during RTSP and reported by
+     * {@link #isSecondDisplayActive()} -- a host may decline, in which case the
+     * renderer set here is never used and the panel should show the trackpad.
+     */
+    public static synchronized void setupSecondDisplayBridge(VideoDecoderRenderer videoRenderer,
+                                                             int width, int height, int fps,
+                                                             int bitrateKbps, int videoCapabilities) {
+        // A renderer cannot be replaced while its native receive thread may
+        // still call it. This is normally a reconnect guard, but also handles a
+        // Surface being recreated unusually quickly.
+        if (videoRenderer == null) {
+            detachSecondDisplayBridge();
+            return;
+        }
+        if (MoonBridge.videoRenderer2 != null) {
+            detachSecondDisplayBridge();
+        }
+        MoonBridge.videoRenderer2 = videoRenderer;
+        enableSecondDisplay(width, height, fps, bitrateKbps, videoCapabilities);
     }
+
+    /**
+     * Stops only the optional video pipeline and releases its renderer.
+     *
+     * <p>This is safe to call repeatedly when Android destroys the lower
+     * screen's {@code Surface}. It does not interrupt the primary video, audio,
+     * controller, keyboard, mouse, or control streams.</p>
+     */
+    public static synchronized void detachSecondDisplayBridge() {
+        // Native teardown joins the receive/decode threads before the Java
+        // reference is cleared, preventing a late frame callback into a stale
+        // Surface or a renderer belonging to the next session.
+        detachSecondDisplay();
+        videoRenderer2 = null;
+    }
+
+    public static synchronized void cleanupBridge() {
+        detachSecondDisplayBridge();
+        MoonBridge.videoRenderer = null;
+        MoonBridge.connectionListener = null;
+        MoonBridge.audioRenderer = null;
+    }
+
+    private static native void enableSecondDisplay(int width, int height, int fps, int bitrateKbps,
+                                                   int videoCapabilities);
+
+    private static native void detachSecondDisplay();
+
+    /**
+     * Whether a second video stream was negotiated and has not since failed.
+     *
+     * Asked after the connection is up. A host that declined leaves the second
+     * panel with nothing to show, and it must fall back to the trackpad rather
+     * than sit black waiting for frames that will never arrive.
+     */
+    public static native boolean isSecondDisplayActive();
 
     public static native int startConnection(String address, String appVersion, String gfeVersion,
                                               String rtspSessionUrl, int serverCodecModeSupport,
@@ -356,7 +468,25 @@ public class MoonBridge {
 
     public static native void sendMousePosition(short x, short y, short referenceWidth, short referenceHeight);
 
+    /**
+     * Sends an absolute pointer position to one streamed display.
+     *
+     * @param x horizontal coordinate in the reference plane
+     * @param y vertical coordinate in the reference plane
+     * @param referenceWidth width of the reference plane
+     * @param referenceHeight height of the reference plane
+     * @param displayIndex zero for the primary display or one for the secondary
+     */
+    public static native void sendMousePositionForDisplay(short x, short y, short referenceWidth,
+                                                          short referenceHeight, short displayIndex);
+
     public static native void sendMouseMoveAsMousePosition(short deltaX, short deltaY, short referenceWidth, short referenceHeight);
+
+    /** Sends relative motion through the independent absolute cursor for one display. */
+    public static native void sendMouseMoveAsMousePositionForDisplay(short deltaX, short deltaY,
+                                                                     short referenceWidth,
+                                                                     short referenceHeight,
+                                                                     short displayIndex);
 
     public static native void sendMouseButton(byte buttonEvent, byte mouseButton);
 
@@ -368,6 +498,25 @@ public class MoonBridge {
 
     public static native int sendTouchEvent(byte eventType, int pointerId, float x, float y, float pressure,
                                             float contactAreaMajor, float contactAreaMinor, short rotation);
+
+    /**
+     * Sends a native touchscreen contact to one streamed display.
+     *
+     * @param eventType one of the {@code LI_TOUCH_EVENT_*} constants
+     * @param pointerId stable identifier for this contact
+     * @param x normalized horizontal coordinate
+     * @param y normalized vertical coordinate
+     * @param pressure normalized pressure or hover distance
+     * @param contactAreaMajor normalized major contact axis
+     * @param contactAreaMinor normalized minor contact axis
+     * @param rotation contact rotation or {@link #LI_ROT_UNKNOWN}
+     * @param displayIndex zero for the primary display or one for the secondary
+     * @return zero on success or a native error code
+     */
+    public static native int sendTouchEventForDisplay(byte eventType, int pointerId, float x, float y,
+                                                       float pressure, float contactAreaMajor,
+                                                       float contactAreaMinor, short rotation,
+                                                       short displayIndex);
 
     public static native int sendPenEvent(byte eventType, byte toolType, byte penButtons, float x, float y,
                                           float pressure, float contactAreaMajor, float contactAreaMinor,

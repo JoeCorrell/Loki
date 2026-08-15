@@ -56,7 +56,7 @@ import com.thor.core.model.StreamSource
 import com.thor.core.model.WatchProgress
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.ThorDropdownItem
-import com.thor.core.ui.component.ThorDropdownMenu
+import com.thor.core.ui.component.ThorDropdownAnchor
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.data.media.ProviderOutcome
@@ -391,8 +391,12 @@ private fun SeasonDropdown(
     val hover = rememberPointerHover()
     val lit = hover.isHovered || focused
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    ThorDropdownAnchor(
+        expanded = expanded,
+        onDismissRequest = { onExpandedChange(false) },
+        modifier = Modifier.fillMaxWidth(),
+        anchor = {
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .pointerHover(hover)
@@ -427,13 +431,9 @@ private fun SeasonDropdown(
                 tint = if (lit) colors.cursor else colors.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
             )
-        }
-
-        ThorDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { onExpandedChange(false) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+            }
+        },
+    ) {
             seasons.forEach { season ->
                 ThorDropdownItem(
                     label = seasonTitle(season),
@@ -442,7 +442,6 @@ private fun SeasonDropdown(
                     onClick = { onSelected(season.number) },
                 )
             }
-        }
     }
 }
 

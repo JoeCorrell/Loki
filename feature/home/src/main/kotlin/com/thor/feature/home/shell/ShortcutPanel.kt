@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.rounded.ScreenShare
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.PhotoCamera
@@ -363,7 +364,7 @@ private fun ShortcutHint(button: String, label: String) {
         Text(
             text = button,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.primary,
+            color = colors.control,
             fontWeight = FontWeight.Black,
         )
         Text(
@@ -384,6 +385,7 @@ private enum class ShortcutGroup(val label: String) {
 private fun ShortcutAction.group(): ShortcutGroup = when (this) {
     ShortcutAction.APPS,
     ShortcutAction.SEARCH,
+    ShortcutAction.PLAY_COMPASS,
     ShortcutAction.THOR_SETTINGS,
     ShortcutAction.SWAP_SCREENS,
     ShortcutAction.COUCH_MODE,
@@ -403,14 +405,15 @@ private fun ShortcutAction.group(): ShortcutGroup = when (this) {
 }
 
 private fun ShortcutGroup.accent(colors: ThorColors): Color = when (this) {
-    ShortcutGroup.LAUNCHER -> colors.primary
+    ShortcutGroup.LAUNCHER -> colors.control
     ShortcutGroup.CAPTURE -> colors.error
-    ShortcutGroup.SYSTEM -> colors.secondary
+    ShortcutGroup.SYSTEM -> colors.contentAccent
 }
 
 private fun ShortcutAction.icon(): ImageVector = when (this) {
     ShortcutAction.APPS -> Icons.Rounded.Apps
     ShortcutAction.SEARCH -> Icons.Rounded.Search
+    ShortcutAction.PLAY_COMPASS -> Icons.Rounded.Explore
     ShortcutAction.THOR_SETTINGS -> Icons.Rounded.Tune
     ShortcutAction.SWAP_SCREENS -> Icons.Rounded.SwapVert
     ShortcutAction.COUCH_MODE -> Icons.Rounded.Weekend

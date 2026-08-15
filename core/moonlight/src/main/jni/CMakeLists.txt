@@ -58,6 +58,17 @@ add_library(moonlight-core SHARED
     ${COMMON}/src/SimpleStun.c
     ${COMMON}/src/VideoDepacketizer.c
     ${COMMON}/src/VideoStream.c
+    # The second display's pipeline: the RTP queue, depacketizer, and stream
+    # implementation above are compiled again with
+    # their exported symbols renamed, so it has its own file statics and cannot
+    # disturb the first stream. See src/SecondStream.h.
+    ${COMMON}/src/SecondStream.c
+    ${COMMON}/src/RtpVideoQueue2.c
+    ${COMMON}/src/VideoDepacketizer2.c
+    ${COMMON}/src/VideoStream2.c
+    # The second decoder's JNI bridge, so the second stream renders into a
+    # different Surface from the first.
+    moonlight-core/callbacks2.c
     ${COMMON}/reedsolomon/rs.c
     ${COMMON}/enet/callbacks.c
     ${COMMON}/enet/compress.c

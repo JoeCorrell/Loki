@@ -1,4 +1,5 @@
 package com.thor.feature.stream.panel
+
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.runtime.getValue
@@ -9,7 +10,7 @@ import com.thor.core.model.KeyboardLayer
 import com.thor.core.model.NavDirection
 import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.model.ThorKeyboardLayout
-import com.thor.data.stream.StreamPad
+import com.thor.core.streaming.StreamPad
 import kotlin.math.abs
 
 /** What the bottom panel is showing. */
@@ -77,18 +78,35 @@ class StreamPanelController(
     var typed by mutableStateOf("")
         private set
 
+    /** Shows the keyboard and gives it the controller. */
     fun takeKeyboard() {
+        mode = PanelMode.PAD
         keyboardFocused = true
+        lastDirection = null
     }
 
+    /** Hides the keyboard and returns the controller to the streamed PC. */
     fun releaseKeyboard() {
         keyboardFocused = false
+        lastDirection = null
     }
 
+    /** Toggles the keyboard without replacing the decoder surface below it. */
+    fun toggleKeyboard() {
+        if (keyboardFocused) releaseKeyboard() else takeKeyboard()
+    }
+
+    /** Opens or closes the in-session summary reached with Start. */
     fun toggleSettings() {
-        mode = if (mode == PanelMode.SETTINGS) PanelMode.PAD else PanelMode.SETTINGS
+        if (mode == PanelMode.SETTINGS) {
+            showPad()
+        } else {
+            releaseKeyboard()
+            mode = PanelMode.SETTINGS
+        }
     }
 
+    /** Returns from the in-session summary to the normal panel. */
     fun showPad() {
         mode = PanelMode.PAD
     }

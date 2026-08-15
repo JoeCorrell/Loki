@@ -29,7 +29,7 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.KeyboardLayer
 import com.thor.core.model.SessionQuality
 import com.thor.core.ui.component.ThorKeyboard
-import com.thor.data.stream.StreamPad
+import com.thor.core.streaming.StreamPad
 import kotlin.math.abs
 
 /**
@@ -82,49 +82,71 @@ fun StreamPadPanel(
                 .weight(TRACKPAD_WEIGHT),
         )
 
-        /*
-         * Touching the keyboard hands it the controller.
-         *
-         * The whole pad follows focus — a button cannot be split between two
-         * windows — so this is the moment the user says which screen they are
-         * working on. B gives it back.
-         */
-        Box(
+        StreamKeyboardPanel(
+            controller = controller,
+            onDismiss = {},
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(KEYBOARD_WEIGHT)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        controller.takeKeyboard()
-                    }
-                },
-        ) {
-            ThorKeyboard(
-                text = controller.typed,
-                label = if (controller.keyboardFocused) {
-                    "Typing on the PC · B gives the controller back"
-                } else {
-                    "Typing on the PC · tap to use the controller here"
-                },
-                layer = controller.layer,
-                shifted = controller.shifted,
-                /*
-                 * A cursor only while this panel holds the controller.
-                 *
-                 * A highlighted key that cannot be moved would say the pad works
-                 * here when it does not — so out of focus there is deliberately
-                 * nothing to see.
-                 */
-                cursorRow = if (controller.keyboardFocused) controller.cursorRow else -1,
-                cursorColumn = if (controller.keyboardFocused) controller.cursorColumn else -1,
-                onKey = controller::press,
-                // Nothing to dismiss to: this panel is the whole screen for as
-                // long as the stream is up.
-                onDismiss = {},
-                modifier = Modifier.fillMaxSize(),
-            )
+                .weight(KEYBOARD_WEIGHT),
+        )
+    }
+}
+
+/**
+ * The stream keyboard shared by the trackpad panel and dual-display overlay.
+ *
+ * Keeping one rendering path means controller navigation, touch feedback and
+ * local typed text cannot diverge between the two lower-screen modes.
+ */
+@Composable
+internal fun StreamKeyboardPanel(
+    controller: StreamPanelController,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = if (controller.keyboardFocused) {
+        "Typing on the PC · B gives the controller back"
+    } else {
+        "Typing on the PC · tap to use the controller here"
+    },
+    claimControllerOnTouch: Boolean = true,
+) {
+    /*
+     * Touching the keyboard hands it the controller.
+     *
+     * The whole pad follows focus — a button cannot be split between two
+     * windows — so this is the moment the user says which screen they are
+     * working on. B gives it back.
+     */
+    val focusModifier = if (claimControllerOnTouch) {
+        Modifier.pointerInput(controller) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                controller.takeKeyboard()
+            }
         }
+    } else {
+        Modifier
+    }
+
+    Box(modifier = modifier.then(focusModifier)) {
+        ThorKeyboard(
+            text = controller.typed,
+            label = label,
+            layer = controller.layer,
+            shifted = controller.shifted,
+            /*
+             * A cursor only while this panel holds the controller.
+             *
+             * A highlighted key that cannot be moved would say the pad works
+             * here when it does not — so out of focus there is deliberately
+             * nothing to see.
+             */
+            cursorRow = if (controller.keyboardFocused) controller.cursorRow else -1,
+            cursorColumn = if (controller.keyboardFocused) controller.cursorColumn else -1,
+            onKey = controller::press,
+            onDismiss = onDismiss,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -137,7 +159,7 @@ fun StreamPadPanel(
  * and codec are agreed with the host at launch.
  */
 @Composable
-private fun StreamQuickSettings(
+internal fun StreamQuickSettings(
     quality: SessionQuality,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -146,7 +168,9 @@ private fun StreamQuickSettings(
     val dimens = ThorTheme.dimens
 
     Column(
-        modifier = modifier.padding(dimens.spacing),
+        modifier = modifier
+            .background(colors.background)
+            .padding(dimens.spacing),
         verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
         Text(

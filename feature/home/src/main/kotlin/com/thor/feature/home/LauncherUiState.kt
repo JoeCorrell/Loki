@@ -198,6 +198,7 @@ sealed interface LauncherEffect {
     data class LaunchFailed(val reason: String) : LauncherEffect
     data object OpenSettings : LauncherEffect
     data object OpenSearch : LauncherEffect
+    data object OpenPlayCompass : LauncherEffect
 
     /**
      * Raise the system's power dialog.

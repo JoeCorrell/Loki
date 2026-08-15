@@ -1,5 +1,6 @@
 #include "Limelight-internal.h"
 #include "Rtsp.h"
+#include "SecondStream.h"
 
 #define RTSP_CONNECT_TIMEOUT_SEC 10
 #define RTSP_RECEIVE_TIMEOUT_SEC 15
@@ -1232,7 +1233,73 @@ int performRtspHandshake(PSERVER_INFORMATION serverInfo) {
 
         freeMessage(&response);
     }
-    
+
+    // The second display's video stream, when the client asked for one.
+    //
+    // Everything here degrades to a single-display session rather than failing
+    // the connection: the second screen is an enhancement, and a host that
+    // cannot provide it must still be able to stream.
+    if (LiIsSecondDisplayRequested() && AppVersionQuad[0] >= 5) {
+        RTSP_MESSAGE response;
+        int error = -1;
+
+        if (!setupStream(&response, "streamid=video/1/0", &error)) {
+            Limelog("Second display unavailable (SETUP failed: %d); using one display\n", error);
+            LiDisableSecondDisplay();
+        }
+        else if (response.message.response.statusCode != 200) {
+            // 404 is what this fork's host returns when it cannot serve a second
+            // display, and what any other host returns because it has never
+            // heard of the stream id. Both mean the same thing here.
+            Limelog("Second display unavailable (SETUP status %d); using one display\n",
+                response.message.response.statusCode);
+            LiDisableSecondDisplay();
+            freeMessage(&response);
+        }
+        else {
+            char* pingPayload;
+
+            // Keep the mutable ping counters independent. Prefer a payload
+            // supplied specifically for stream one, but retain the primary
+            // session payload when the host returns no override.
+            VideoPingPayload2 = VideoPingPayload;
+            VideoPingPayload2.sequenceNumber = 0;
+            pingPayload = getOptionContent(response.options, "X-SS-Ping-Payload");
+            if (pingPayload != NULL && strlen(pingPayload) == sizeof(VideoPingPayload2.payload)) {
+                memcpy(VideoPingPayload2.payload, pingPayload, sizeof(VideoPingPayload2.payload));
+            }
+
+            if (!parseServerPortFromTransport(&response, &VideoPortNumber2)) {
+                // No well-known fallback, unlike stream 0. There is no
+                // traditional port for a stream that no traditional host serves,
+                // so an unparseable Transport means the host is not one that
+                // implements this.
+                Limelog("Second display unavailable (no port in SETUP reply); using one display\n");
+                LiDisableSecondDisplay();
+            }
+            else if (VideoPortNumber2 == VideoPortNumber) {
+                // The collision that identifies an unsupporting host.
+                //
+                // Sunshine parses the stream *type* before the '/' and discards
+                // the index, so `video/1/0` resolves to the same port as
+                // `video/0/0` and the SETUP appears to succeed. Accepting it
+                // would put two receive threads and two depacketizers on one
+                // socket, splitting one stream's packets between two decoders --
+                // which fails as corruption on both screens rather than as a
+                // missing feature, and is far harder to diagnose than no second
+                // display at all.
+                Limelog("Second display unsupported (host reused port %u); using one display\n",
+                    VideoPortNumber2);
+                LiDisableSecondDisplay();
+            }
+            else {
+                Limelog("Second display video port: %u\n", VideoPortNumber2);
+            }
+
+            freeMessage(&response);
+        }
+    }
+
     if (AppVersionQuad[0] >= 5) {
         RTSP_MESSAGE response;
         int error = -1;
@@ -1353,6 +1420,29 @@ int performRtspHandshake(PSERVER_INFORMATION serverInfo) {
                     response.message.response.statusCode);
                 ret = response.message.response.statusCode;
                 goto Exit;
+            }
+
+            freeMessage(&response);
+        }
+    }
+
+    // PLAY the optional stream explicitly even on modern hosts that also accept
+    // the aggregate PLAY "/" request. The second-stream protocol contract uses
+    // its indexed URI, while unsupported hosts have already been filtered by
+    // SETUP returning a colliding port.
+    if (LiIsSecondDisplayNegotiated()) {
+        RTSP_MESSAGE response;
+        int error = -1;
+
+        if (!playStream(&response, "streamid=video/1/0", &error)) {
+            Limelog("Second display PLAY failed: %d; using one display\n", error);
+            LiDisableSecondDisplay();
+        }
+        else {
+            if (response.message.response.statusCode != 200) {
+                Limelog("Second display PLAY failed: %d; using one display\n",
+                    response.message.response.statusCode);
+                LiDisableSecondDisplay();
             }
 
             freeMessage(&response);

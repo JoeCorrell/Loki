@@ -12,6 +12,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
@@ -23,6 +24,12 @@ import com.thor.data.capture.ScreenRecorder
 import com.thor.launcher.LauncherActivity
 import com.thor.launcher.R
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -36,12 +43,11 @@ import javax.inject.Inject
  * running the mock-up recording through here would have been rejected by the
  * platform. That one stays in the view model.
  *
- * A screen recording is the opposite case in every respect. It mirrors the real
- * display through `MediaProjection`, so it keeps capturing inside a game — which is
- * the point of it — and it therefore needs somewhere to live that is not a screen the
- * user has left, and a control they can reach from where they now are. A foreground
- * service is the only answer Android has to the first, and its notification is the
- * only answer to the second.
+ * A screen recording is the opposite case in every respect. This service owns the
+ * encoder and compositor: MediaProjection supplies the primary panel and Loki's
+ * explicitly enabled accessibility service supplies secondary-panel frames. It
+ * therefore keeps capturing apps on either display after every launcher window is
+ * covered, while its notification remains a reachable stop control.
  */
 @AndroidEntryPoint
 class RecordingService : Service() {
@@ -52,12 +58,25 @@ class RecordingService : Service() {
     @Inject lateinit var geometry: RecordingGeometry
 
     private val notifications by lazy { NotificationManagerCompat.from(this) }
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var ownsRecording = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        serviceScope.launch {
+            recorder.state.collectLatest { state ->
+                if (ownsRecording && state !is RecordingState.Active) finishService()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (ownsRecording && recorder.isRecording) recorder.stop()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -105,27 +124,20 @@ class RecordingService : Service() {
             return
         }
 
-        /*
-         * The stacked frame, not the raw display.
-         *
-         * This asked for `screen()` — the default display, 1920 by 1080 — and then
-         * drew the same two-panel composition into it. The lid alone fills a
-         * sixteen-by-nine canvas at that size, so the base had nowhere to go and
-         * ended up inside the picture of the top screen: a recording containing
-         * neither panel as itself. The frame the launcher recorder uses is the
-         * shape this content was written for, and there is no reason for the two
-         * kinds of recording to differ — they draw the same thing.
-         */
-        val frame = geometry.frame()
+        // Resolve both physical displays before Loki can be covered by the app the
+        // user is about to record. The compositor keeps this immutable layout.
+        val layout = geometry.layout()
         val state = recorder.startProjection(
             projection = projection,
-            width = frame.width,
-            height = frame.height,
-            densityDpi = frame.densityDpi,
+            requestedLayout = layout,
         )
         if (state is RecordingState.Failed) {
             ThorLog.w(TAG, "Screen recording refused: ${state.reason}")
+            Toast.makeText(this, state.reason, Toast.LENGTH_LONG).show()
             stopRecording()
+        } else if (state is RecordingState.Active) {
+            ownsRecording = true
+            if (!recorder.isRecording) finishService()
         }
     }
 
@@ -133,6 +145,11 @@ class RecordingService : Service() {
         val saved = runCatching { recorder.stop() }.getOrNull()
         ThorLog.i(TAG, saved?.let { "Saved $it" } ?: "Nothing was recorded")
 
+        finishService()
+    }
+
+    private fun finishService() {
+        ownsRecording = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
